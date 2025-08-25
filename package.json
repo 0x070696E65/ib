@@ -1,0 +1,18 @@
+{
+  "name": "ib",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix frontend\" \"npm run start --prefix backend\" \"npm run dev:db\"",
+    "dev:frontend": "vite --prefix frontend",
+    "dev:backend": "ts-node backend/server.ts",
+    "dev:db": "mongod --dbpath ~/mongodb/data --port 27017 --quiet --logpath ~/mongodb/mongo.log"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
