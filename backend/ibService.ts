@@ -106,7 +106,7 @@ export class IbService {
       const timeout = setTimeout(() => {
         cleanup()
         this.connected = false
-        this.disconnect()
+        reject(new Error(`接続タイムアウト (${this.host}:${this.port})`))
       }, 15000) // 15秒でタイムアウト
 
       const cleanup = () => {
