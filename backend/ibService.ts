@@ -1,5 +1,5 @@
 // backend/ibService.ts (堅牢版)
-const { IBApi, EventName, SecType, OptionType, BarSizeSetting, WhatToShow } = require('@stoqey/ib')
+import { IBApi, EventName, SecType, OptionType, BarSizeSetting, WhatToShow } from '@stoqey/ib'
 import { DateTime } from 'luxon'
 import * as net from 'net'
 
@@ -32,6 +32,17 @@ interface ContractDetails {
   contract: Contract
 }
 
+export class IbServiceManager {
+  private static instance: IbService
+
+  static getInstance(): IbService {
+    if (!this.instance) {
+      this.instance = new IbService(4001, '127.0.0.1', 1)
+    }
+    return this.instance
+  }
+}
+
 export class IbService {
   private ib: any
   private connected: boolean = false
@@ -39,7 +50,7 @@ export class IbService {
   private port: number
   private clientId: number
 
-  constructor(port = 4001, host = '127.0.0.1', clientId = 100) {
+  constructor(port = 4001, host = '127.0.0.1', clientId = 0) {
     this.host = host
     this.port = port
     this.clientId = clientId
@@ -94,7 +105,8 @@ export class IbService {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         cleanup()
-        reject(new Error(`接続タイムアウト (${this.host}:${this.port})`))
+        this.connected = false
+        this.disconnect()
       }, 15000) // 15秒でタイムアウト
 
       const cleanup = () => {

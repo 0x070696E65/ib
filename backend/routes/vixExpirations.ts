@@ -1,8 +1,8 @@
 import { Router } from 'express'
-import { IbService } from '../ibService'
+import { IbServiceManager } from '../ibService'
 
 const router = Router()
-const ibService = new IbService()
+const ibService = IbServiceManager.getInstance()
 
 router.get('/', async (req, res) => {
   try {

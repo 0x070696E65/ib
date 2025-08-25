@@ -1,9 +1,9 @@
 import { Router } from 'express'
 import { OptionClosePriceModel } from '../models/OptionClosePrice'
-import { IbService } from '../ibService'
+import { IbServiceManager } from '../ibService'
 
 const router = Router()
-const ibService = new IbService()
+const ibService = IbServiceManager.getInstance()
 
 router.get('/', async (req, res) => {
   const strike = Number(req.query.strike) || 18
