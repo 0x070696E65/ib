@@ -1,7 +1,7 @@
 import { IbService } from '../ibService'
 
 async function simpleTest() {
-  const ibService = new IbService(4001, '127.0.0.1', 0)
+  const ibService = new IbService(4001, '127.0.0.1', 100)
 
   try {
     console.log('\n1. 接続開始...')
