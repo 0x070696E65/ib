@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { OptionClosePriceModel } from '../models/OptionClosePrice'
-import { IbServiceManager } from '../ibService'
+import { OptionClosePriceModel, OptionLastFetchedModel } from '../models/OptionClosePrice'
+import { IbServiceManager } from '../services/ibService'
 
 const router = Router()
 const ibService = IbServiceManager.getInstance()
@@ -16,6 +16,7 @@ router.get('/', async (req, res) => {
     const newOptionData = await ibService.fetchVixOptionBars(contractMonth, strike, latestDate)
 
     const dailyDataMap = new Map<string, (typeof newOptionData.data)[0]>()
+
     newOptionData.data.forEach((bar) => {
       const dateKey = bar.date.toISOString().slice(0, 10)
       if (!dailyDataMap.has(dateKey) || bar.date > dailyDataMap.get(dateKey)!.date) {
@@ -31,6 +32,7 @@ router.get('/', async (req, res) => {
       )
     }
 
+    await OptionLastFetchedModel.updateOne({}, { fetchedDate: new Date() }, { upsert: true })
     const allData = await OptionClosePriceModel.find({ contract: contractMonth, strike }).sort({ date: 1 })
     res.json({ data: allData })
   } catch (err) {

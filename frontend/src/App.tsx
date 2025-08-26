@@ -1,24 +1,33 @@
 import { useState } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
-import type { OptionClosePrice } from '../../shared/types'
-import { fetchVixOption, /* fetchVixExpirations */ } from './api/vixService'
+import type { OptionClosePrice, FetchSummary } from '../../shared/types'
+import { /* fetchVixOption, fetchVixExpirations, */ fetchAllVixData } from './api/vixService'
 
 function App() {
-  const [prices, setPrices] = useState<OptionClosePrice[]>([])
+  const [prices, /* setPrices */] = useState<OptionClosePrice[]>([])
   const [expirations, /* setExpirations */] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
 
   const handleFetchData = async () => {
     setLoading(true)
     try {
+    const result: FetchSummary = await fetchAllVixData()
+    console.log('一括取得結果:', result)
+  } catch (error) {
+    console.error('データ取得エラー:', error)
+  } finally {
+    setLoading(false)
+  }
+    /* try {
       const data = await fetchVixOption(18, '20250916')
       setPrices(data)
-      console.log('データ取得成功:', data.length)
+      const data2 = await fetchVixExpirations();
+      setExpirations(data2)
     } catch (error) {
       console.error('データ取得エラー:', error)
     } finally {
       setLoading(false)
-    }
+    } */
   }
 
   return (
@@ -44,7 +53,7 @@ function App() {
       <h2 className="text-xl font-semibold mb-4">Available Expirations</h2>
       <div className="flex gap-2 flex-wrap mb-6">
         {expirations.map((exp) => (
-          <span key={exp} className="px-3 py-1 bg-blue-100 rounded-full">{exp}</span>
+          <><span key={exp} className="px-3 py-1 bg-blue-100 rounded-full">{exp}</span><br /></>
         ))}
       </div>
 
