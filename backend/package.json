@@ -5,7 +5,8 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node-dev --respawn --transpile-only server.ts"
+    "start": "ts-node-dev --respawn --transpile-only server.ts",
+    "test:duration": "ts-node test/fetch-vix-option-unit-test.ts"
   },
   "keywords": [],
   "author": "",

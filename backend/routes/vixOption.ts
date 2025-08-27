@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
     const latestRecord = await OptionClosePriceModel.findOne({ contract: contractMonth, strike }).sort({ date: -1 })
     const latestDate = latestRecord?.date
 
-    const newOptionData = await ibService.fetchVixOptionBars(contractMonth, strike, latestDate)
+    const newOptionData = await ibService.fetchVixOptionBars(contractMonth, strike, 30, latestDate)
 
     const dailyDataMap = new Map<string, (typeof newOptionData.data)[0]>()
 

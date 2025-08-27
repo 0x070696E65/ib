@@ -25,3 +25,8 @@ export async function fetchAllVixData(): Promise<FetchSummary> {
   })
   return await res.json()
 }
+
+export async function fetchAllVixDataFromMongo(contract: string): Promise<OptionClosePrice[]> {
+  const res = await fetch(`${BASE_URL}/vix/${contract}`)
+  return await res.json()
+}
