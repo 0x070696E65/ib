@@ -5,6 +5,12 @@ export interface OptionClosePrice {
   close: number
 }
 
+export interface FutureClosePrice {
+  contract: string
+  date: Date
+  close: number
+}
+
 export interface FetchProgress {
   expiration: string
   strike: number

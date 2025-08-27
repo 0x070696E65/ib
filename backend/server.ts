@@ -3,6 +3,7 @@ import cors from 'cors'
 import mongoose from 'mongoose'
 import vixOptionRoutes from './routes/vixOption'
 import vixExpirationsRoutes from './routes/vixExpirations'
+import vixFutureRoutes from './routes/vixFuture'
 
 const app = express()
 const port = 3001
@@ -13,7 +14,8 @@ mongoose.connect('mongodb://127.0.0.1:27017/vixdb', {})
 
 // ルート統一
 app.use('/api/vix-option', vixOptionRoutes)
-app.use('/api/vix/expirations', vixExpirationsRoutes)
+app.use('/api/vix-expirations', vixExpirationsRoutes)
+app.use('/api/vix-future', vixFutureRoutes)
 
 app.listen(port, () => {
   console.log(`Backend server running at http://localhost:${port}`)

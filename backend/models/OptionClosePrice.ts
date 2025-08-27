@@ -23,16 +23,3 @@ export const OptionClosePriceModel = mongoose.model<OptionClosePriceDoc>(
   OptionClosePriceSchema,
   'vix_options'
 )
-
-interface OptionLastFetchedDoc extends Document {
-  lastTradingDate: Date
-  fetchedDate: Date
-}
-
-export const OptionLastFetchedModel = mongoose.model<OptionLastFetchedDoc>(
-  'OptionLastFetched',
-  new Schema<OptionLastFetchedDoc>({
-    fetchedDate: { type: Date, required: true },
-  }),
-  'vix_options_last_fetched'
-)

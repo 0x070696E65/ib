@@ -1,6 +1,11 @@
 // services/ExpirationService.ts
 import { IbService } from './IbService'
-import { VixExpirationModel, ExpirationCacheStateModel } from '../models/VixExpiration'
+import {
+  VixExpirationModel,
+  ExpirationCacheStateModel,
+  VixFutureExpirationModel,
+  FutureExpirationCacheStateModel,
+} from '../models/VixExpiration'
 
 export class ExpirationService {
   private static instance: ExpirationService
@@ -62,6 +67,79 @@ export class ExpirationService {
 
       throw error
     }
+  }
+
+  async getFutureExpirations(): Promise<string[]> {
+    try {
+      const cache = await FutureExpirationCacheStateModel.findOne()
+      const now = new Date()
+
+      // 28日以内ならキャッシュ利用
+      if (cache && this.isWithinCacheWindow(cache.lastUpdated, now)) {
+        console.log('先物満期日をキャッシュから取得')
+        const expirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
+        return expirations.map((e) => e.expiration)
+      }
+
+      console.log('先物満期日をIBから新規取得')
+      // IBから取得
+      const expirations = await this.ibService.getAvailableFutureExpirations()
+
+      if (expirations.length === 0) {
+        // フォールバック
+        if (cache) {
+          console.log('IB取得失敗、既存の先物キャッシュを使用')
+          const existingExpirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
+          return existingExpirations.map((e) => e.expiration)
+        }
+        throw new Error('先物満期日を取得できませんでした')
+      }
+
+      // MongoDB更新
+      await this.updateFutureExpirationsInDB(expirations)
+
+      // キャッシュ状態更新
+      await this.updateFutureCacheState(cache, now)
+
+      return expirations
+    } catch (error) {
+      console.error('先物満期日取得エラー:', error)
+
+      // エラー時のフォールバック
+      const existingExpirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
+      if (existingExpirations.length > 0) {
+        console.log('エラー発生、既存の先物満期日を使用:', existingExpirations.length, '件')
+        return existingExpirations.map((e) => e.expiration)
+      }
+
+      throw error
+    }
+  }
+
+  private async updateFutureExpirationsInDB(expirations: string[]): Promise<void> {
+    console.log(`先物満期日をDBに保存: ${expirations.length}件`)
+
+    const operations = expirations.map((exp) => ({
+      updateOne: {
+        filter: { expiration: exp },
+        update: { $set: { expiration: exp } },
+        upsert: true,
+      },
+    }))
+
+    if (operations.length > 0) {
+      await VixFutureExpirationModel.bulkWrite(operations, { ordered: false })
+    }
+  }
+
+  private async updateFutureCacheState(cache: any, now: Date): Promise<void> {
+    if (cache) {
+      cache.lastUpdated = now
+      await cache.save()
+    } else {
+      await FutureExpirationCacheStateModel.create({ lastUpdated: now })
+    }
+    console.log('先物キャッシュ状態を更新')
   }
 
   /**

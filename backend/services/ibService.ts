@@ -239,7 +239,7 @@ export class IbService {
         optionContract,
         '',
         duration, // 動的に指定された期間
-        BarSizeSetting.HOURS_FOUR,
+        BarSizeSetting.HOURS_EIGHT,
         WhatToShow.MIDPOINT,
         1,
         1,
@@ -355,7 +355,7 @@ export class IbService {
         futureContract,
         '',
         duration,
-        BarSizeSetting.HOURS_FOUR, // 日足データ
+        BarSizeSetting.HOURS_EIGHT,
         WhatToShow.TRADES, // 実際の取引価格（終値）
         1,
         1,
@@ -378,7 +378,7 @@ export class IbService {
     // 順次処理でレート制限を回避
     for (const contractMonth of contractMonths) {
       try {
-        const result = await this.fetchVixFutureBars(contractMonth, durationDays)
+        const result = await this.fetchVixFutureBars(contractMonth, durationDays, undefined)
         results.push(result)
         console.log(`先物データ取得完了: ${contractMonth} (${result.actualDataPoints}件)`)
 

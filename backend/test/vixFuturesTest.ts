@@ -1,14 +1,25 @@
 import { IbService } from '../services/IbService'
+import mongoose from 'mongoose'
+import { ExpirationService } from '../services/ExpirationService'
+import { BarSizeSetting } from '@stoqey/ib'
+
+async function connectDB() {
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect('mongodb://127.0.0.1:27017/vixdb', {})
+    console.log('MongoDB接続完了')
+  }
+}
 
 async function testVixFutures() {
   console.log('=== VIX先物データ取得テスト開始 ===')
 
   const ibService = IbService.getInstance()
+  const expirationService = ExpirationService.getInstance()
 
   try {
     // テスト1: 単一契約のデータ取得
     console.log('\n--- テスト1: 単一VIX先物データ取得 ---')
-    const singleResult = await ibService.fetchVixFutureBars('20250917', 90) // 3ヶ月分
+    const singleResult = await ibService.fetchVixFutureBars('20250917', 90, undefined) // 3ヶ月分
 
     console.log('取得結果:')
     console.log(`- 契約月: ${singleResult.contract}`)
@@ -24,7 +35,8 @@ async function testVixFutures() {
 
     // テスト2: 複数契約のデータ取得
     console.log('\n--- テスト2: 複数VIX先物データ取得 ---')
-    const contractMonths = ['20250917', '20251022', '20251119']
+    await connectDB()
+    const contractMonths = await expirationService.getFutureExpirations()
     const multipleResults = await ibService.fetchMultipleVixFutureBars(contractMonths, 60) // 2ヶ月分
 
     console.log('複数取得結果:')
@@ -46,6 +58,7 @@ async function testVixFutures() {
   } catch (error) {
     console.error('テストエラー:', error)
   } finally {
+    await mongoose.disconnect()
     // クリーンアップ
     console.log('\n--- クリーンアップ ---')
     await ibService.cleanup()
@@ -53,42 +66,14 @@ async function testVixFutures() {
   }
 }
 
-// パフォーマンステスト用
-async function performanceTest() {
-  console.log('=== パフォーマンステスト ===')
-
-  const ibService = IbService.getInstance()
-  const startTime = Date.now()
-
-  try {
-    // 6ヶ月分の契約を取得
-    const contracts = ['20250917', '20251022', '20251119', '20251217', '20260121', '20260218']
-    const results = await ibService.fetchMultipleVixFutureBars(contracts, 30)
-
-    const endTime = Date.now()
-    const duration = (endTime - startTime) / 1000
-
-    console.log(`実行時間: ${duration.toFixed(2)}秒`)
-    console.log(`取得契約数: ${results.length}`)
-    console.log(`平均処理時間: ${(duration / results.length).toFixed(2)}秒/契約`)
-
-    const totalDataPoints = results.reduce((sum, r) => sum + r.actualDataPoints!, 0)
-    console.log(`総データポイント数: ${totalDataPoints}`)
-  } catch (error) {
-    console.error('パフォーマンステストエラー:', error)
-  } finally {
-    await ibService.cleanup()
-  }
-}
-
 // テスト実行
 if (require.main === module) {
   testVixFutures()
     .then(() => {
-      console.log('\n基本テスト完了。パフォーマンステストを実行しますか？')
-      performanceTest()
+      console.log('\n基本テスト完了。')
+      process.exit(0)
     })
     .catch(console.error)
 }
 
-export { testVixFutures, performanceTest }
+export { testVixFutures }
