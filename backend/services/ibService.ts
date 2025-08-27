@@ -10,6 +10,13 @@ export interface OptionClosePrice {
   actualDataPoints?: number
 }
 
+export interface FutureClosePrice {
+  contract: string
+  data: { date: Date; close: number }[]
+  requestedDuration?: string
+  actualDataPoints?: number
+}
+
 export class IbServiceManager {
   private static instance: IbService
 
@@ -65,13 +72,25 @@ export class IbService {
     if (typeof bar === 'string' && bar.startsWith('finished-')) {
       if (!request.resolved) {
         request.resolved = true
-        request.resolve({
-          contract: request.contractMonth,
-          strike: request.strike,
-          data: request.historicalDataArray,
-          requestedDuration: request.duration,
-          actualDataPoints: request.historicalDataArray.length,
-        })
+
+        // 先物とオプションで異なるレスポンス形式
+        if (request.futureType) {
+          request.resolve({
+            contract: request.contractMonth,
+            data: request.historicalDataArray,
+            requestedDuration: request.duration,
+            actualDataPoints: request.historicalDataArray.length,
+          })
+        } else {
+          // 既存のオプション用レスポンス
+          request.resolve({
+            contract: request.contractMonth,
+            strike: request.strike,
+            data: request.historicalDataArray,
+            requestedDuration: request.duration,
+            actualDataPoints: request.historicalDataArray.length,
+          })
+        }
         this.pendingRequests.delete(tickerId)
         console.log(
           `データ取得完了: ${request.contractMonth} Strike:${request.strike} (${request.duration}) - ${request.historicalDataArray.length}件`
@@ -232,23 +251,6 @@ export class IbService {
     })
   }
 
-  // 便利メソッド群
-  async fetchVixOptionBars1Day(contractMonth: string, strike: number, fromDate?: Date): Promise<OptionClosePrice> {
-    return this.fetchVixOptionBars(contractMonth, strike, 1, fromDate)
-  }
-
-  async fetchVixOptionBars7Days(contractMonth: string, strike: number, fromDate?: Date): Promise<OptionClosePrice> {
-    return this.fetchVixOptionBars(contractMonth, strike, 7, fromDate)
-  }
-
-  async fetchVixOptionBars30Days(contractMonth: string, strike: number, fromDate?: Date): Promise<OptionClosePrice> {
-    return this.fetchVixOptionBars(contractMonth, strike, 30, fromDate)
-  }
-
-  async fetchVixOptionBars360Days(contractMonth: string, strike: number, fromDate?: Date): Promise<OptionClosePrice> {
-    return this.fetchVixOptionBars(contractMonth, strike, 360, fromDate)
-  }
-
   // 複数のリクエストを並行して取得する（日数指定対応）
   async fetchMultipleVixOptionBars(
     requests: Array<{
@@ -294,6 +296,104 @@ export class IbService {
     }
 
     console.log(`全${results.length}件のデータ取得完了`)
+    return results
+  }
+
+  /**
+   * VIX先物の履歴データを取得（日足終値）
+   * @param contractMonth 満期月 (例: '202501')
+   * @param durationDays 取得日数 (初回: 720日, 更新: 30日)
+   * @param fromDate 開始日 (指定された場合は追加フィルタリング)
+   */
+  async fetchVixFutureBars(
+    contractMonth: string,
+    durationDays: number = 720,
+    fromDate?: Date
+  ): Promise<FutureClosePrice> {
+    await this.connect()
+
+    return new Promise((resolve, reject) => {
+      const requestId = this.getNextRequestId()
+      const futureContract: Contract = {
+        symbol: 'VIX',
+        secType: SecType.FUT,
+        exchange: 'CFE',
+        currency: 'USD',
+        lastTradeDateOrContractMonth: contractMonth,
+        tradingClass: 'VX',
+        multiplier: 1000,
+      }
+
+      const historicalDataArray: { date: Date; close: number }[] = []
+      const todayStart = DateTime.now().setZone('US/Central').startOf('day').toJSDate()
+      const duration = `${durationDays} D`
+
+      // リクエスト情報を保存
+      this.pendingRequests.set(requestId, {
+        contractMonth,
+        futureType: true, // 先物フラグ
+        fromDate,
+        todayStart,
+        historicalDataArray,
+        duration,
+        resolve,
+        reject,
+        resolved: false,
+        timestamp: Date.now(),
+      })
+
+      // タイムアウト処理
+      setTimeout(() => {
+        const request = this.pendingRequests.get(requestId)
+        if (request && !request.resolved) {
+          request.resolved = true
+          request.reject(new Error(`先物データ取得タイムアウト: ${contractMonth} (${duration})`))
+          this.pendingRequests.delete(requestId)
+        }
+      }, 30000)
+
+      console.log(`VIX先物データ取得開始: ${contractMonth} (期間: ${duration}) (ReqID: ${requestId})`)
+      this.ib.reqHistoricalData(
+        requestId,
+        futureContract,
+        '',
+        duration,
+        BarSizeSetting.HOURS_FOUR, // 日足データ
+        WhatToShow.TRADES, // 実際の取引価格（終値）
+        1,
+        1,
+        false
+      )
+    })
+  }
+
+  /**
+   * 複数のVIX先物データを順次取得
+   * @param contractMonths 満期月の配列 (例: ['202501', '202502'])
+   * @param durationDays 取得日数 (デフォルト: 720日)
+   */
+  async fetchMultipleVixFutureBars(contractMonths: string[], durationDays: number = 720): Promise<FutureClosePrice[]> {
+    await this.connect()
+
+    console.log(`${contractMonths.length}件のVIX先物データ取得を開始`)
+    const results: FutureClosePrice[] = []
+
+    // 順次処理でレート制限を回避
+    for (const contractMonth of contractMonths) {
+      try {
+        const result = await this.fetchVixFutureBars(contractMonth, durationDays)
+        results.push(result)
+        console.log(`先物データ取得完了: ${contractMonth} (${result.actualDataPoints}件)`)
+
+        // 次のリクエスト前に少し待機
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+      } catch (error) {
+        console.error(`先物データ取得エラー: ${contractMonth}`, error)
+        // エラーがあっても他の契約は続行
+      }
+    }
+
+    console.log(`VIX先物データ取得完了: ${results.length}件`)
     return results
   }
 

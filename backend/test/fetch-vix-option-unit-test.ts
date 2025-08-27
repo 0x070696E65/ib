@@ -1,6 +1,6 @@
 // test/fetch-vix-option-unit-test.ts
-import { IbService } from '../services/ibService'
-
+import { IbService } from '../services/IbService'
+import { ExpirationService } from '../services/ExpirationService'
 interface TestResult {
   duration: string
   dataPoints: number
@@ -74,7 +74,9 @@ async function testMultipleDurations() {
   let strike: number = 18
 
   try {
-    const expirations = await ibService.getAvailableExpirations()
+    const expirationService = ExpirationService.getInstance()
+    const expirations = await expirationService.getExpirations()
+
     if (expirations.length === 0) {
       throw new Error('有効な満期日が見つかりません')
     }
@@ -201,7 +203,8 @@ async function testSpecificDuration(durationDays: number) {
 
   try {
     // 有効な契約を取得
-    const expirations = await ibService.getAvailableExpirations()
+    const expirationService = ExpirationService.getInstance()
+    const expirations = await expirationService.getExpirations()
     if (expirations.length === 0) {
       throw new Error('有効な満期日が見つかりません')
     }

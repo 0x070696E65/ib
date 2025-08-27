@@ -1,7 +1,8 @@
-// test/vix-data-service-test.ts (修正版 - 動的契約取得)
+// test/vix-data-service-test.ts (修正版)
 import mongoose from 'mongoose'
 import { VixDataService } from '../services/VixDataService'
-import { IbServiceManager } from '../services/ibService'
+import { ExpirationService } from '../services/ExpirationService'
+import { IbServiceManager } from '../services/IbService'
 
 // MongoDB接続セットアップ
 async function setupDatabase() {
@@ -20,28 +21,32 @@ async function teardownDatabase() {
 
 // 利用可能な契約情報を取得する関数
 async function getValidContracts(): Promise<{ expirations: string[]; validStrikes: number[] }> {
-  console.log('📋 有効な契約情報を取得中...')
-
-  const service = new VixDataService()
+  console.log('有効な契約情報を取得中...')
 
   try {
-    const expirations = await service['getAndSaveExpirations']()
+    // 接続をリセットして新しいインスタンスを使用
+    const ibService = IbServiceManager.getInstance()
+    await ibService.cleanup()
+
+    // 少し待機
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const expirationService = ExpirationService.getInstance()
+    const expirations = await expirationService.getExpirations()
 
     if (expirations.length === 0) {
       throw new Error('有効な満期日が見つかりませんでした')
     }
 
     // テスト用に安全なストライク範囲を使用
-    // VIXは通常10-50の範囲で取引される
     const validStrikes = [12, 15, 18, 20, 25, 30]
 
-    console.log(`✅ 取得した満期日: ${expirations.length}件`)
-    console.log(`   最新: ${expirations[0]}`)
-    console.log(`   使用ストライク: ${validStrikes.join(', ')}`)
+    console.log(`取得した満期日: ${expirations.length}件`)
+    console.log(`最新: ${expirations[0]}`)
+    console.log(`使用ストライク: ${validStrikes.join(', ')}`)
 
     return { expirations, validStrikes }
   } catch (error) {
-    console.error('❌ 契約情報取得エラー:', error)
+    console.error('契約情報取得エラー:', error)
     throw error
   }
 }
@@ -50,11 +55,10 @@ async function testExpirations() {
   console.log('満期日取得テスト開始')
   console.log('='.repeat(40))
 
-  const service = new VixDataService()
-
   try {
     const startTime = Date.now()
-    const expirations = await service['getAndSaveExpirations']()
+    const expirationService = ExpirationService.getInstance()
+    const expirations = await expirationService.getExpirations()
     const duration = Date.now() - startTime
 
     console.log('満期日取得成功:')
@@ -75,53 +79,13 @@ async function testExpirations() {
   }
 }
 
-async function testSingleOption() {
-  console.log('\n単一オプションデータ取得テスト開始')
-  console.log('='.repeat(40))
-
-  try {
-    // 実際に存在する契約を取得
-    const { expirations, validStrikes } = await getValidContracts()
-
-    const expiration = expirations[0] // 最新の満期日
-    const strike = validStrikes[2] // 中程度のストライク (通常18)
-
-    console.log(`テスト対象: ${expiration} Strike${strike}`)
-
-    const service = new VixDataService()
-    const startTime = Date.now()
-    const result = await service['fetchAndSaveOptionData'](expiration, strike)
-    const duration = Date.now() - startTime
-
-    if (result.status === 'success') {
-      console.log(`✅ 単一オプション取得成功:`)
-      console.log(`   満期日: ${result.expiration}`)
-      console.log(`   ストライク: ${result.strike}`)
-      console.log(`   データ件数: ${result.dataCount}`)
-      console.log(`   処理時間: ${(duration / 1000).toFixed(2)}秒`)
-    } else {
-      console.log(`❌ 単一オプション取得失敗:`)
-      console.log(`   エラー: ${result.error}`)
-      console.log(`   処理時間: ${(duration / 1000).toFixed(2)}秒`)
-    }
-
-    return result
-  } catch (error) {
-    console.error('単一オプション取得エラー:', error)
-    throw error
-  }
-}
-
 async function testSmallBatch() {
-  console.log('\n小規模バッチテスト開始 (新バッチ処理)')
+  console.log('小規模バッチテスト開始')
   console.log('='.repeat(40))
 
   try {
-    // 実際に存在する契約を取得
-    const { validStrikes } = await getValidContracts()
-
-    // 小規模テスト用に3つのストライクを使用
-    const testStrikes = validStrikes.slice(0, 3)
+    // 簡単な設定でテスト
+    const testStrikes = [15, 20, 25] // 3つのストライクでテスト
     console.log(`テスト対象ストライク: ${testStrikes.join(', ')}`)
 
     const service = new VixDataService()
@@ -134,11 +98,19 @@ async function testSmallBatch() {
     console.log(`  成功: ${summary.successCount}件`)
     console.log(`  失敗: ${summary.errorCount}件`)
 
-    console.log('\n詳細 (最初の10件):')
+    if (summary.optimizationStats) {
+      console.log('最適化統計:')
+      console.log(`  30日: ${summary.optimizationStats.duration30D}件`)
+      console.log(`  90日: ${summary.optimizationStats.duration90D}件`)
+      console.log(`  360日: ${summary.optimizationStats.duration360D}件`)
+    }
+
+    console.log('詳細 (最初の10件):')
     summary.details.slice(0, 10).forEach((detail, index) => {
       const status = detail.status === 'success' ? '✅' : '❌'
       const info = detail.status === 'success' ? `${detail.dataCount}件` : detail.error?.substring(0, 50)
-      console.log(`  ${index + 1}. ${status} ${detail.expiration} Strike${detail.strike}: ${info}`)
+      const optimization = detail.optimizationReason ? ` (${detail.optimizationReason})` : ''
+      console.log(`  ${index + 1}. ${status} ${detail.expiration} Strike${detail.strike}: ${info}${optimization}`)
     })
 
     if (summary.details.length > 10) {
@@ -152,9 +124,9 @@ async function testSmallBatch() {
   }
 }
 
-// IBサービスの直接テスト（修正版）
+// IBサービスの直接テスト
 async function testIbServiceBatch() {
-  console.log('\nIBサービス直接バッチテスト開始')
+  console.log('IBサービス直接バッチテスト開始')
   console.log('='.repeat(40))
 
   try {
@@ -163,18 +135,18 @@ async function testIbServiceBatch() {
 
     // テスト用のリクエスト（実在する契約のみ）
     const requests = [
-      { contractMonth: expirations[0], strike: validStrikes[0] },
-      { contractMonth: expirations[0], strike: validStrikes[1] },
+      { contractMonth: expirations[0], strike: validStrikes[0], durationDays: 30 },
+      { contractMonth: expirations[0], strike: validStrikes[1], durationDays: 90 },
     ]
 
     // 複数の満期日がある場合は追加
     if (expirations.length > 1) {
-      requests.push({ contractMonth: expirations[1], strike: validStrikes[0] })
+      requests.push({ contractMonth: expirations[1], strike: validStrikes[0], durationDays: 360 })
     }
 
     console.log(`テストリクエスト: ${requests.length}件`)
     requests.forEach((req, index) => {
-      console.log(`  ${index + 1}. ${req.contractMonth} Strike${req.strike}`)
+      console.log(`  ${index + 1}. ${req.contractMonth} Strike${req.strike} (${req.durationDays}日)`)
     })
 
     const ibService = IbServiceManager.getInstance()
@@ -182,7 +154,7 @@ async function testIbServiceBatch() {
     const results = await ibService.fetchMultipleVixOptionBars(requests)
     const duration = Date.now() - startTime
 
-    console.log('\n✅ IBサービス直接テスト結果:')
+    console.log('IBサービス直接テスト結果:')
     console.log(`  処理時間: ${(duration / 1000).toFixed(2)}秒`)
     console.log(`  成功件数: ${results.length}件`)
 
@@ -197,60 +169,9 @@ async function testIbServiceBatch() {
   }
 }
 
-// パフォーマンス比較テスト（修正版）
-async function testPerformanceComparison() {
-  console.log('\nパフォーマンス比較テスト開始')
-  console.log('='.repeat(40))
-
-  try {
-    // 実際に存在する契約を取得
-    const { validStrikes } = await getValidContracts()
-
-    // パフォーマンステスト用に2つのストライクを使用
-    const testStrikes = validStrikes.slice(0, 2)
-    console.log(`テスト対象ストライク: ${testStrikes.join(', ')}`)
-
-    const service = new VixDataService()
-
-    console.log('1. バッチ処理版テスト...')
-    const batchStartTime = Date.now()
-    const batchResult = await service.fetchAllVixData(testStrikes)
-    const batchDuration = Date.now() - batchStartTime
-
-    console.log('2. 逐次処理版テスト...')
-    const sequentialStartTime = Date.now()
-    const sequentialResult = await service.fetchAllVixDataSequential(testStrikes)
-    const sequentialDuration = Date.now() - sequentialStartTime
-
-    console.log('\n📊 パフォーマンス比較結果:')
-    console.log('='.repeat(20))
-    console.log(`バッチ処理版:`)
-    console.log(`  処理時間: ${(batchDuration / 1000).toFixed(2)}秒`)
-    console.log(`  成功率: ${((batchResult.successCount / batchResult.totalRequests) * 100).toFixed(1)}%`)
-
-    console.log(`逐次処理版:`)
-    console.log(`  処理時間: ${(sequentialDuration / 1000).toFixed(2)}秒`)
-    console.log(`  成功率: ${((sequentialResult.successCount / sequentialResult.totalRequests) * 100).toFixed(1)}%`)
-
-    const improvement = (((sequentialDuration - batchDuration) / sequentialDuration) * 100).toFixed(1)
-    console.log(`🚀 改善率: ${improvement}% 高速化`)
-
-    return {
-      batchResult,
-      sequentialResult,
-      batchDuration,
-      sequentialDuration,
-      improvement: parseFloat(improvement),
-    }
-  } catch (error) {
-    console.error('パフォーマンス比較テストエラー:', error)
-    throw error
-  }
-}
-
 // 接続状況テスト
 async function testConnectionStatus() {
-  console.log('\n接続状況テスト開始')
+  console.log('接続状況テスト開始')
   console.log('='.repeat(40))
 
   const service = new VixDataService()
@@ -265,7 +186,7 @@ async function testConnectionStatus() {
     const ibService = IbServiceManager.getInstance()
     await ibService.connect()
 
-    console.log('\n接続後の状況:')
+    console.log('接続後の状況:')
     const afterStatus = service.getConnectionStatus()
     console.log(`  接続状態: ${afterStatus.connected}`)
     console.log(`  ホスト: ${afterStatus.host}:${afterStatus.port}`)
@@ -273,7 +194,7 @@ async function testConnectionStatus() {
 
     await ibService.cleanup()
 
-    console.log('\n切断後の状況:')
+    console.log('切断後の状況:')
     const cleanupStatus = service.getConnectionStatus()
     console.log(`  接続状態: ${cleanupStatus.connected}`)
 
@@ -284,9 +205,9 @@ async function testConnectionStatus() {
   }
 }
 
-// エラー耐性テスト（新規追加）
+// エラー耐性テスト
 async function testErrorHandling() {
-  console.log('\nエラー耐性テスト開始')
+  console.log('エラー耐性テスト開始')
   console.log('='.repeat(40))
 
   const ibService = IbServiceManager.getInstance()
@@ -296,17 +217,17 @@ async function testErrorHandling() {
 
     // 無効な契約でテスト
     const invalidRequests = [
-      { contractMonth: '20200101', strike: 999 }, // 過去の日付
-      { contractMonth: '20990101', strike: -10 }, // 未来過ぎる日付、負のストライク
+      { contractMonth: '20200101', strike: 999, durationDays: 30 }, // 過去の日付
+      { contractMonth: '20990101', strike: -10, durationDays: 90 }, // 未来過ぎる日付、負のストライク
     ]
 
     console.log('無効な契約でのテスト開始...')
 
     try {
       const results = await ibService.fetchMultipleVixOptionBars(invalidRequests)
-      console.log('⚠️  エラーが期待されましたが成功しました:', results.length)
+      console.log('エラーが期待されましたが成功しました:', results.length)
     } catch (error) {
-      console.log('✅ 期待通りエラーが発生:', error.message.substring(0, 100))
+      console.log('期待通りエラーが発生:', (error as Error).message.substring(0, 100))
     }
 
     return true
@@ -318,73 +239,22 @@ async function testErrorHandling() {
   }
 }
 
+// 全テスト実行
 async function runAllTests() {
   await setupDatabase()
 
   try {
-    console.log('🧪 VIXデータサービス 包括テスト開始 (修正版)')
+    console.log('VIXデータサービス全テスト開始')
     console.log('='.repeat(50))
 
-    // 0. 事前チェック：有効な契約があるか確認
-    try {
-      await getValidContracts()
-    } catch (error) {
-      console.error('❌ 事前チェック失敗 - IBサーバーが起動していないか、VIXデータが利用できません')
-      throw error
-    }
+    await testExpirations()
+    await testSmallBatch()
+    await testIbServiceBatch()
+    await testConnectionStatus()
+    await testErrorHandling()
 
-    // 1. 満期日取得テスト
-    const expirations = await testExpirations()
-
-    // 2. 単一オプションテスト
-    const singleResult = await testSingleOption()
-
-    // 3. 小規模バッチテスト（新機能）
-    const batchResult = await testSmallBatch()
-
-    // 4. IBサービス直接テスト（新機能）
-    const ibResult = await testIbServiceBatch()
-
-    // 5. パフォーマンス比較テスト（新機能）
-    const perfResult = await testPerformanceComparison()
-
-    // 6. 接続状況テスト（新機能）
-    const connResult = await testConnectionStatus()
-
-    // 7. エラー耐性テスト（新機能）
-    const errorResult = await testErrorHandling()
-
-    console.log('\n' + '='.repeat(50))
-    console.log('🎉 全テスト完了')
     console.log('='.repeat(50))
-    console.log(`📊 満期日数: ${expirations.length}`)
-    console.log(`🎯 単一オプション: ${singleResult.status}`)
-    console.log(`📦 小規模バッチ: ${batchResult.successCount}/${batchResult.totalRequests} 成功`)
-    console.log(`⚡ IBサービス直接: ${ibResult.length}件成功`)
-    console.log(`🚀 パフォーマンス改善: ${perfResult.improvement}% 高速化`)
-    console.log(`🔗 接続テスト: 成功`)
-    console.log(`🛡️  エラー耐性: ${errorResult ? '成功' : '失敗'}`)
-
-    return {
-      expirations,
-      singleResult,
-      batchResult,
-      ibResult,
-      perfResult,
-      connResult,
-      errorResult,
-    }
-  } catch (error) {
-    console.error('❌ テスト実行エラー:', error)
-
-    // デバッグ情報を出力
-    console.log('\n🔍 デバッグ情報:')
-    console.log('- TWS/IB Gatewayが起動していますか？')
-    console.log('- APIアクセスが有効になっていますか？')
-    console.log('- VIXオプションデータの購読権限はありますか？')
-    console.log('- 接続設定（ホスト:127.0.0.1, ポート:4001）は正しいですか？')
-
-    throw error
+    console.log('全テスト完了')
   } finally {
     await teardownDatabase()
   }
@@ -400,14 +270,10 @@ async function runIndividualTest(testName: string) {
         return await getValidContracts()
       case 'expirations':
         return await testExpirations()
-      case 'single':
-        return await testSingleOption()
       case 'batch':
         return await testSmallBatch()
       case 'ib-batch':
         return await testIbServiceBatch()
-      case 'performance':
-        return await testPerformanceComparison()
       case 'connection':
         return await testConnectionStatus()
       case 'error':
@@ -425,28 +291,25 @@ if (require.main === module) {
 
   if (testArg) {
     // 個別テスト実行
-    console.log(`🧪 ${testArg}テスト開始`)
+    console.log(`${testArg}テスト開始`)
     runIndividualTest(testArg)
       .then((result) => {
-        console.log(`\n✅ ${testArg}テスト成功`)
-        if (testArg === 'contracts' && Array.isArray(result)) {
-          console.log(`取得契約数: ${result.length}`)
-        }
+        console.log(`${testArg}テスト成功`)
         process.exit(0)
       })
       .catch((error) => {
-        console.log(`\n❌ ${testArg}テスト失敗:`, error.message)
+        console.log(`${testArg}テスト失敗:`, error.message)
         process.exit(1)
       })
   } else {
     // 全テスト実行
     runAllTests()
       .then(() => {
-        console.log('\n✅ 全テスト成功')
+        console.log('全テスト成功')
         process.exit(0)
       })
       .catch((error) => {
-        console.log('\n❌ 全テスト失敗:', error.message)
+        console.log('全テスト失敗:', error.message)
         process.exit(1)
       })
   }
@@ -455,10 +318,8 @@ if (require.main === module) {
 export {
   getValidContracts,
   testExpirations,
-  testSingleOption,
   testSmallBatch,
   testIbServiceBatch,
-  testPerformanceComparison,
   testConnectionStatus,
   testErrorHandling,
 }

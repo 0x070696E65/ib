@@ -1,12 +1,9 @@
 // test/get-available-expirations-unit-test.ts
-import { IbService } from '../ibService'
+import { ExpirationService } from '../services/ExpirationService'
 
 async function testGetAvailableExpirations() {
   console.log('getAvailableExpirations 単体テスト開始')
   console.log('='.repeat(50))
-
-  // 修正版IbServiceを使用（接続設定は環境に合わせて調整してください）
-  const ibService = new IbService(4001, '127.0.0.1', 101)
 
   try {
     console.log('リクエスト設定:')
@@ -17,8 +14,8 @@ async function testGetAvailableExpirations() {
 
     const startTime = Date.now()
 
-    const expirations = await ibService.getAvailableExpirations()
-
+    const expirationService = ExpirationService.getInstance()
+    const expirations = await expirationService.getExpirations()
     const duration = Date.now() - startTime
 
     console.log(`満期日取得成功! (${duration}ms)`)
