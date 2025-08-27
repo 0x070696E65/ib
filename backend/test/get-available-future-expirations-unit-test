@@ -1,0 +1,2 @@
+import { IbService } from '../services/IbService'
+const ibService = new IbService()

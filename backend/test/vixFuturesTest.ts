@@ -1,9 +1,9 @@
-import { IbServiceManager } from '../services/IbService'
+import { IbService } from '../services/IbService'
 
 async function testVixFutures() {
   console.log('=== VIX先物データ取得テスト開始 ===')
 
-  const ibService = IbServiceManager.getInstance()
+  const ibService = IbService.getInstance()
 
   try {
     // テスト1: 単一契約のデータ取得
@@ -57,7 +57,7 @@ async function testVixFutures() {
 async function performanceTest() {
   console.log('=== パフォーマンステスト ===')
 
-  const ibService = IbServiceManager.getInstance()
+  const ibService = IbService.getInstance()
   const startTime = Date.now()
 
   try {

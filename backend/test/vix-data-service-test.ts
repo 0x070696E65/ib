@@ -2,7 +2,7 @@
 import mongoose from 'mongoose'
 import { VixDataService } from '../services/VixDataService'
 import { ExpirationService } from '../services/ExpirationService'
-import { IbServiceManager } from '../services/IbService'
+import { IbService } from '../services/IbService'
 
 // MongoDB接続セットアップ
 async function setupDatabase() {
@@ -25,7 +25,7 @@ async function getValidContracts(): Promise<{ expirations: string[]; validStrike
 
   try {
     // 接続をリセットして新しいインスタンスを使用
-    const ibService = IbServiceManager.getInstance()
+    const ibService = IbService.getInstance()
     await ibService.cleanup()
 
     // 少し待機
@@ -149,7 +149,7 @@ async function testIbServiceBatch() {
       console.log(`  ${index + 1}. ${req.contractMonth} Strike${req.strike} (${req.durationDays}日)`)
     })
 
-    const ibService = IbServiceManager.getInstance()
+    const ibService = IbService.getInstance()
     const startTime = Date.now()
     const results = await ibService.fetchMultipleVixOptionBars(requests)
     const duration = Date.now() - startTime
@@ -183,7 +183,7 @@ async function testConnectionStatus() {
     console.log(`  保留リクエスト: ${beforeStatus.pendingRequests || 0}件`)
 
     // 接続テスト
-    const ibService = IbServiceManager.getInstance()
+    const ibService = IbService.getInstance()
     await ibService.connect()
 
     console.log('接続後の状況:')
@@ -210,7 +210,7 @@ async function testErrorHandling() {
   console.log('エラー耐性テスト開始')
   console.log('='.repeat(40))
 
-  const ibService = IbServiceManager.getInstance()
+  const ibService = IbService.getInstance()
 
   try {
     await ibService.connect()

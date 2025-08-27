@@ -1,5 +1,5 @@
 // services/VixDataService.ts (シンプル版)
-import { IbServiceManager, OptionClosePrice } from './IbService'
+import { IbService, OptionClosePrice } from './IbService'
 import { OptionClosePriceModel } from '../models/OptionClosePrice'
 import { ExpirationService } from './ExpirationService'
 
@@ -30,7 +30,7 @@ export interface FetchSummary {
 }
 
 export class VixDataService {
-  private ibService = IbServiceManager.getInstance()
+  private ibService = IbService.getInstance()
   private expirationService = ExpirationService.getInstance()
 
   /**

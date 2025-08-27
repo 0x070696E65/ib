@@ -17,18 +17,8 @@ export interface FutureClosePrice {
   actualDataPoints?: number
 }
 
-export class IbServiceManager {
-  private static instance: IbService
-
-  static getInstance(): IbService {
-    if (!this.instance) {
-      this.instance = new IbService(4001, '127.0.0.1', 10)
-    }
-    return this.instance
-  }
-}
-
 export class IbService {
+  private static instance: IbService
   private ib: IBApi
   private connected: boolean = false
   private host: string
@@ -50,6 +40,13 @@ export class IbService {
 
     console.log(`IBサービス初期化: ${host}:${port} (ClientID: ${clientId})`)
     this.setupEventListeners()
+  }
+
+  static getInstance(): IbService {
+    if (!this.instance) {
+      this.instance = new IbService(4001, '127.0.0.1', 10)
+    }
+    return this.instance
   }
 
   private setupEventListeners(): void {
@@ -435,6 +432,48 @@ export class IbService {
 
       console.log(`満期日取得リクエスト送信 (ReqID: ${reqId})`)
       this.ib.reqContractDetails(reqId, vixContract)
+    })
+  }
+
+  // 先物用（新規）
+  async getAvailableFutureExpirations(): Promise<string[]> {
+    await this.connect()
+
+    return new Promise<string[]>((resolve, reject) => {
+      const reqId = this.getNextRequestId()
+      const expirations = new Set<string>()
+
+      this.pendingRequests.set(reqId, {
+        expirations,
+        resolve: (result: string[]) => resolve(result),
+        reject,
+        resolved: false,
+        timestamp: Date.now(),
+      })
+
+      const timeoutId = setTimeout(() => {
+        const request = this.pendingRequests.get(reqId)
+        if (request && !request.resolved) {
+          request.resolved = true
+          let uniqueExpirations = Array.from(expirations)
+            .map((expiry) => expiry.split(' ')[0])
+            .sort()
+          console.log(`先物満期日取得完了 (タイムアウト): ${uniqueExpirations.length}件`)
+          resolve(uniqueExpirations)
+          this.pendingRequests.delete(reqId)
+        }
+      }, 10000)
+
+      const vixFutureContract: Contract = {
+        symbol: 'VIX',
+        secType: SecType.FUT,
+        exchange: 'CFE',
+        currency: 'USD',
+        tradingClass: 'VX',
+      }
+
+      console.log(`先物満期日取得リクエスト送信 (ReqID: ${reqId})`)
+      this.ib.reqContractDetails(reqId, vixFutureContract)
     })
   }
 

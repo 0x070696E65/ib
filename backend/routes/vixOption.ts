@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import { OptionClosePriceModel, OptionLastFetchedModel } from '../models/OptionClosePrice'
-import { IbServiceManager } from '../services/IbService'
+import { IbService } from '../services/IbService'
 import { VixDataService } from '../services/VixDataService'
 
 const router = Router()
-const ibService = IbServiceManager.getInstance()
+const ibService = IbService.getInstance()
 
 router.get('/', async (req, res) => {
   const strike = Number(req.query.strike) || 18

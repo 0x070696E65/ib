@@ -1,10 +1,10 @@
 // backend/routes/futures.ts
 import { Router } from 'express'
 import { FuturesClosePriceModel } from '../models/FuturesClosePrice'
-import { IbServiceManager } from '../services/IbService'
+import { IbService } from '../services/IbService'
 
 const router = Router()
-const ibService = IbServiceManager.getInstance()
+const ibService = IbService.getInstance()
 
 /**
  * 契約月を YYYYMM形式 から YYYYMMDD形式 に変換

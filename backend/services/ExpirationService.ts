@@ -1,10 +1,10 @@
 // services/ExpirationService.ts
-import { IbServiceManager } from './IbService'
+import { IbService } from './IbService'
 import { VixExpirationModel, ExpirationCacheStateModel } from '../models/VixExpiration'
 
 export class ExpirationService {
   private static instance: ExpirationService
-  private ibService = IbServiceManager.getInstance()
+  private ibService = IbService.getInstance()
 
   static getInstance(): ExpirationService {
     if (!this.instance) {
