@@ -1,7 +1,7 @@
 // frontend/src/api/vixService.ts
 import type { OptionClosePrice, FetchSummary } from '../../../shared/types'
 
-const BASE_URL = 'http://localhost:3001/api'
+const BASE_URL = 'http://macbook-pro.local:3001/api'
 
 export async function fetchVixExpirations(): Promise<string[]> {
   const res = await fetch(`${BASE_URL}/vix-expirations/options`)

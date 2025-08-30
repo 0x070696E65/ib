@@ -1,5 +1,6 @@
 // services/VixDataService.ts (オプション＋先物対応版)
-import { IbService, OptionClosePrice, FutureClosePrice } from './IbService'
+import { createIbServices } from './ib-service'
+import { OptionClosePrice, FutureClosePrice } from './ib-service/types'
 import { OptionClosePriceModel } from '../models/OptionClosePrice'
 import { FutureClosePriceModel } from '../models/FutureClosePrice'
 import { ExpirationService } from './ExpirationService'
@@ -56,7 +57,7 @@ export interface FutureFetchSummary {
 }
 
 export class VixDataService {
-  private ibService = IbService.getInstance()
+  private ibServices = createIbServices()
   private expirationService = ExpirationService.getInstance()
 
   /**
@@ -190,7 +191,7 @@ export class VixDataService {
 
       // 3. バッチ処理でデータ取得
       console.log('データ取得開始...')
-      const optionDataResults = await this.ibService.fetchMultipleVixOptionBars(requests)
+      const optionDataResults = await this.ibServices.historical.fetchMultipleVixOptionBars(requests)
 
       // 4. データ保存
       console.log('取得したデータを保存中...')
@@ -234,7 +235,7 @@ export class VixDataService {
         details: [],
       }
     } finally {
-      await this.ibService.cleanup()
+      await this.ibServices.ib.cleanup()
     }
   }
 
@@ -303,7 +304,7 @@ export class VixDataService {
 
       for (const request of requests) {
         try {
-          const result = await this.ibService.fetchVixFutureBars(
+          const result = await this.ibServices.historical.fetchVixFutureBars(
             request.contractMonth,
             request.durationDays,
             request.fromDate
@@ -364,7 +365,7 @@ export class VixDataService {
         details: [],
       }
     } finally {
-      await this.ibService.cleanup()
+      await this.ibServices.ib.cleanup()
     }
   }
 
@@ -559,8 +560,8 @@ export class VixDataService {
    */
   getConnectionStatus() {
     return {
-      ...this.ibService.getConnectionInfo(),
-      ...this.ibService.getPendingRequestsStatus(),
+      ...this.ibServices.ib.getConnectionInfo(),
+      ...this.ibServices.ib.getPendingRequestsStatus(),
     }
   }
 }

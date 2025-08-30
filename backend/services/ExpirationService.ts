@@ -1,5 +1,5 @@
 // services/ExpirationService.ts
-import { IbService } from './IbService'
+import { createIbServices } from './ib-service'
 import {
   VixExpirationModel,
   ExpirationCacheStateModel,
@@ -9,7 +9,7 @@ import {
 
 export class ExpirationService {
   private static instance: ExpirationService
-  private ibService = IbService.getInstance()
+  private ibServices = createIbServices()
 
   static getInstance(): ExpirationService {
     if (!this.instance) {
@@ -36,7 +36,7 @@ export class ExpirationService {
 
       console.log('満期日をIBから新規取得')
       // IBから取得
-      const expirations = await this.ibService.getAvailableExpirations()
+      const expirations = await this.ibServices.contracts.getAvailableExpirations()
 
       if (expirations.length === 0) {
         // フォールバック: 既存のキャッシュがあれば使用
@@ -83,7 +83,7 @@ export class ExpirationService {
 
       console.log('先物満期日をIBから新規取得')
       // IBから取得
-      const expirations = await this.ibService.getAvailableFutureExpirations()
+      const expirations = await this.ibServices.contracts.getAvailableFutureExpirations()
 
       if (expirations.length === 0) {
         // フォールバック
