@@ -6,7 +6,12 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node-dev --respawn --transpile-only server.ts",
-    "test:duration": "ts-node test/fetch-vix-option-unit-test.ts"
+    "test:duration": "ts-node test/fetch-vix-option-unit-test.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:positions": "ts-node test-backend-positions.ts",
+    "test:positions:http": "ts-node test-backend-positions.ts --http"
   },
   "keywords": [],
   "author": "",

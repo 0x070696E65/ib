@@ -156,4 +156,42 @@ export class PositionService {
     const allPositions = await this.getCurrentPositions()
     return allPositions.filter((pos) => pos.symbol === 'VIX' && pos.secType === 'FUT')
   }
+
+  // ローカルシンボルからストライク価格を抽出
+  public extractStrikeFromLocalSymbol(localSymbol: string): number | null {
+    if (!localSymbol) return null
+
+    // VIXオプションのローカルシンボル形式: "VIX   250917P00020000"
+    // 最後の8桁がストライク価格（1000倍されている）
+    const match = localSymbol.match(/([CP])(\d{8})$/)
+    if (match) {
+      const strikeRaw = match[2]
+      return parseInt(strikeRaw) / 1000
+    }
+    return null
+  }
+
+  // 満期日を抽出
+  public extractExpiryFromLocalSymbol(localSymbol: string): string | null {
+    if (!localSymbol) return null
+
+    // VIXオプションのローカルシンボル形式: "VIX   250917P00020000"
+    // 6桁の日付部分
+    const match = localSymbol.match(/\s+(\d{6})[CP]/)
+    if (match) {
+      return match[1] // "250917"
+    }
+    return null
+  }
+
+  // プット/コールを判定
+  public extractOptionType(localSymbol: string): 'PUT' | 'CALL' | null {
+    if (!localSymbol) return null
+
+    const match = localSymbol.match(/([CP])\d{8}$/)
+    if (match) {
+      return match[1] === 'P' ? 'PUT' : 'CALL'
+    }
+    return null
+  }
 }
