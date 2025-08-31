@@ -22,14 +22,13 @@ export class TradeDataService {
   /**
    * Flex Query データを MongoDB にインポート
    */
-  async importFlexExecutions(): Promise<{ imported: number; skipped: number }> {
+  async importFlexExecutions(days: number = 365): Promise<{ imported: number; skipped: number }> {
     console.log('Flex Query データのインポートを開始...')
 
     const flexService = createFlexQueryService(process.env.IB_FLEX_TOKEN!, process.env.IB_FLEX_QUERY_ID!)
 
     try {
-      // 過去1年のデータを取得
-      const flexExecutions = await flexService.getExecutionHistory(365)
+      const flexExecutions = await flexService.getExecutionHistory(days)
       console.log(`${flexExecutions.length}件の約定を取得`)
 
       let imported = 0
@@ -37,8 +36,18 @@ export class TradeDataService {
 
       for (const flexExec of flexExecutions) {
         try {
+          // データ検証とクリーンアップ
+          const cleanedData = this.cleanFlexExecutionData(flexExec)
+
+          // execIDが無効な場合はスキップ
+          if (!cleanedData.execID || cleanedData.execID.trim() === '') {
+            console.warn(`execIDが無効なためスキップ: ${flexExec.symbol} ${flexExec.tradeDate}`)
+            skipped++
+            continue
+          }
+
           // 既存データをチェック（execID で重複確認）
-          const existing = await TradeExecution.findOne({ execID: flexExec.execID })
+          const existing = await TradeExecution.findOne({ execID: cleanedData.execID })
 
           if (existing) {
             skipped++
@@ -46,41 +55,12 @@ export class TradeDataService {
           }
 
           // 新規作成
-          const tradeExecution = new TradeExecution({
-            accountId: flexExec.accountId,
-            symbol: flexExec.symbol,
-            secType: flexExec.secType,
-            description: flexExec.description,
-
-            strike: flexExec.strike,
-            expiry: flexExec.expiry,
-            putCall: flexExec.putCall,
-            multiplier: flexExec.multiplier,
-
-            tradeDate: new Date(flexExec.tradeDate),
-            tradeTime: flexExec.tradeTime,
-            quantity: flexExec.quantity,
-            price: flexExec.price,
-            amount: flexExec.amount,
-            proceeds: flexExec.proceeds,
-            buySell: flexExec.buySell,
-            exchange: flexExec.exchange,
-
-            ibCommission: flexExec.ibCommission,
-            ibCommissionCurrency: flexExec.ibCommissionCurrency,
-            netCash: flexExec.netCash,
-            realizedPnL: flexExec.fifoPnlRealized,
-
-            execID: flexExec.execID,
-            orderID: flexExec.orderID,
-
-            dataSource: 'FLEX_QUERY',
-          })
+          const tradeExecution = new TradeExecution(cleanedData)
 
           await tradeExecution.save()
           imported++
         } catch (error) {
-          console.error(`約定 ${flexExec.execID} の保存エラー:`, error)
+          console.error(`約定 ${flexExec.execID || '不明'} の保存エラー:`, error)
         }
       }
 
@@ -91,6 +71,62 @@ export class TradeDataService {
     } catch (error) {
       console.error('Flex Query インポートエラー:', error)
       throw error
+    }
+  }
+
+  /**
+   * Flex Execution データのクリーンアップ
+   */
+  private cleanFlexExecutionData(flexExec: FlexExecution): any {
+    // putCall の正規化（空文字列をundefinedに）
+    let putCall: 'P' | 'C' | undefined = undefined
+    if (flexExec.putCall && flexExec.putCall.trim() !== '') {
+      const normalizedPutCall = flexExec.putCall.toUpperCase().trim()
+      if (normalizedPutCall === 'P' || normalizedPutCall === 'PUT') {
+        putCall = 'P'
+      } else if (normalizedPutCall === 'C' || normalizedPutCall === 'CALL') {
+        putCall = 'C'
+      }
+    }
+
+    // execID のクリーンアップ
+    let execID = flexExec.execID?.toString().trim() || ''
+
+    // execIDが空の場合、代替IDを生成
+    if (!execID) {
+      execID = `flex_${flexExec.tradeDate}_${flexExec.symbol}_${flexExec.quantity}_${flexExec.price}_${Date.now()}`
+    }
+
+    return {
+      accountId: flexExec.accountId,
+      symbol: flexExec.symbol,
+      secType: flexExec.secType,
+      description: flexExec.description,
+
+      // オプション関連（未定義の場合はundefinedにして保存しない）
+      strike: flexExec.strike || undefined,
+      expiry: flexExec.expiry || undefined,
+      putCall: putCall, // 正規化済み
+      multiplier: flexExec.multiplier || undefined,
+
+      tradeDate: new Date(flexExec.tradeDate),
+      tradeTime: flexExec.tradeTime || undefined,
+      quantity: flexExec.quantity,
+      price: flexExec.price,
+      amount: flexExec.amount || 0,
+      proceeds: flexExec.proceeds || 0,
+      buySell: flexExec.buySell,
+      exchange: flexExec.exchange || undefined,
+
+      ibCommission: flexExec.ibCommission || 0,
+      ibCommissionCurrency: flexExec.ibCommissionCurrency || undefined,
+      netCash: flexExec.netCash || 0,
+      realizedPnL: flexExec.fifoPnlRealized || undefined,
+
+      execID: execID, // クリーンアップ済み
+      orderID: flexExec.orderID || undefined,
+
+      dataSource: 'FLEX_QUERY',
     }
   }
 
@@ -149,19 +185,18 @@ export class TradeDataService {
     let expiry = ''
 
     for (const position of selectedPositions) {
-      const execution = await TradeExecution.findOne({
+      const execution = (await TradeExecution.findOne({
         symbol: position.symbol,
         strike: position.strike,
         expiry: this.formatExpiry(position.expiry!),
         putCall: position.optionType === 'PUT' ? 'P' : 'C',
         positionStatus: 'OPEN',
-      })
+      })) as any
 
       if (execution) {
-        const exec = execution as { _id: string; symbol: string; expiry: string | undefined }
-        executionIds.push(exec._id.toString())
-        symbol = exec.symbol
-        expiry = exec.expiry!
+        executionIds.push(execution._id.toString())
+        symbol = execution.symbol
+        expiry = execution.expiry!
       }
     }
 

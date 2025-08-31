@@ -55,4 +55,5 @@ const TradeBundleSchema = new Schema<ITradeBundle>(
   }
 )
 
-export const TradeBundle = mongoose.model<ITradeBundle>('TradeBundle', TradeBundleSchema, 'trade_bundles')
+export const TradeBundle =
+  mongoose.models.TradeBundle || mongoose.model<ITradeBundle>('TradeBundle', TradeBundleSchema, 'trade_bundles')

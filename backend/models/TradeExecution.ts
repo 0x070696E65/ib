@@ -31,7 +31,7 @@ export interface ITradeExecution extends Document {
   realizedPnL?: number
 
   // 識別情報
-  execID: string
+  execID: object
   orderID?: number
   ibOrderID?: string
 
@@ -57,26 +57,45 @@ const TradeExecutionSchema = new Schema<ITradeExecution>(
     secType: { type: String, required: true, index: true },
     description: String,
 
-    strike: { type: Number, index: true },
-    expiry: { type: String, index: true },
-    putCall: { type: String, enum: ['P', 'C'] },
+    strike: Number, // required を削除
+    expiry: String, // required を削除
+    putCall: {
+      type: String,
+      enum: ['P', 'C'],
+      // required を削除し、空文字列の場合はundefinedにする
+      validate: {
+        validator: function (v: string) {
+          return !v || v === 'P' || v === 'C'
+        },
+        message: 'putCall must be P, C, or empty',
+      },
+    },
     multiplier: Number,
 
     tradeDate: { type: Date, required: true, index: true },
     tradeTime: String,
     quantity: { type: Number, required: true },
     price: { type: Number, required: true },
-    amount: Number,
-    proceeds: Number,
+    amount: { type: Number, default: 0 },
+    proceeds: { type: Number, default: 0 },
     buySell: { type: String, required: true, enum: ['BUY', 'SELL'] },
     exchange: String,
 
     ibCommission: { type: Number, default: 0 },
     ibCommissionCurrency: String,
-    netCash: Number,
+    netCash: { type: Number, default: 0 },
     realizedPnL: Number,
-
-    execID: { type: String, required: true, unique: true },
+    execID: {
+      type: String,
+      required: true,
+      unique: true,
+      validate: {
+        validator: function (v: string) {
+          return v && v.trim().length > 0
+        },
+        message: 'execID cannot be empty',
+      },
+    },
     orderID: Number,
     ibOrderID: String,
 
@@ -113,3 +132,60 @@ export const TradeExecution = mongoose.model<ITradeExecution>(
   TradeExecutionSchema,
   'trade_executions'
 )
+
+// backend/models/TradeBundle.ts
+export interface ITradeBundle extends Document {
+  bundleId: string // UUID
+  name: string
+  tag: 'PP' // PPタグのみバンドル化
+
+  // 基本情報
+  symbol: string
+  expiry: string
+  createdDate: Date
+
+  // バンドル内の取引
+  executionIds: string[]
+
+  // 集計データ
+  totalQuantity: number
+  totalPnL: number // 実現損益のみ
+  averagePrice: number
+
+  // 状態
+  status: 'OPEN' | 'CLOSED' | 'EXPIRED'
+
+  createdAt: Date
+  updatedAt: Date
+}
+
+const TradeBundleSchema = new Schema<ITradeBundle>(
+  {
+    bundleId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    tag: { type: String, required: true, enum: ['PP'] },
+
+    symbol: { type: String, required: true, index: true },
+    expiry: { type: String, required: true, index: true },
+    createdDate: { type: Date, required: true },
+
+    executionIds: [{ type: String, required: true }],
+
+    totalQuantity: { type: Number, default: 0 },
+    totalPnL: { type: Number, default: 0 },
+    averagePrice: { type: Number, default: 0 },
+
+    status: {
+      type: String,
+      enum: ['OPEN', 'CLOSED', 'EXPIRED'],
+      default: 'OPEN',
+      index: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: 'trade_bundles',
+  }
+)
+
+export const TradeBundle = mongoose.model<ITradeBundle>('TradeBundle', TradeBundleSchema, 'trade_bundles')

@@ -24,7 +24,7 @@ interface AnalysisData {
   summary: { totalTrades: number; totalPnL: number; winRate: number }
 }
 
-export const EnhancedPositionsPage: React.FC = () => {
+export default function EnhancedPositionsPage() {
   const [positions, setPositions] = useState<PositionWithTag[]>([])
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set())
   const [isMonitoring, setIsMonitoring] = useState(false)
