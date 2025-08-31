@@ -12,16 +12,17 @@ interface AccountPnL {
 export default function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([])
   const [status, setStatus] = useState<PositionStatus | null>(null)
-  const [accountPnL, setAccountPnL] = useState<AccountPnL | null>(null) // アカウント全体のPnL
+  const [accountPnL, setAccountPnL] = useState<AccountPnL | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isMonitoring, setIsMonitoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [marketMessage, setMarketMessage] = useState<string | null>(null)
+  const [pnlErrors, setPnlErrors] = useState<Set<number>>(new Set())
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   
   const monitorRef = useRef<PositionMonitor | null>(null)
 
+  // 初回データ読み込み
   useEffect(() => {
     loadInitialData()
 
@@ -43,8 +44,9 @@ export default function PositionsPage() {
       })
       setPositions(data.positions)
       setStatus(data.status)
+      setLastUpdate(new Date().toLocaleTimeString())
     } catch (err) {
-      setError('初期データの読み込みに失敗しました')
+      setError('データの読み込みに失敗しました')
       console.error('Initial data load error:', err)
     } finally {
       setLoading(false)
@@ -73,26 +75,7 @@ export default function PositionsPage() {
     monitor.on('positions', (data: unknown) => {
       const newPositions = data as Position[]
       console.log('Positions updated:', newPositions.length)
-      
-      setPositions(prevPositions => {
-        const updatedPositions = newPositions.map(newPos => {
-          const existingPos = prevPositions.find(p => p.contractId === newPos.contractId)
-          return existingPos ? { ...newPos, 
-            dailyPnL: existingPos.dailyPnL, 
-            unrealizedPnL: existingPos.unrealizedPnL,
-            realizedPnL: existingPos.realizedPnL,
-            value: existingPos.value,
-            mark: existingPos.mark
-          } : newPos
-        })
-        updatedPositions.sort((a, b) => {
-          if (!a.expiry) return 1
-          if (!b.expiry) return -1
-          return parseInt(a.expiry, 10) - parseInt(b.expiry, 10)
-        })
-        return updatedPositions
-      })
-      
+      setPositions(newPositions)
       setLastUpdate(new Date().toLocaleTimeString())
     })
 
@@ -106,7 +89,6 @@ export default function PositionsPage() {
       setLastUpdate(new Date().toLocaleTimeString())
     })
 
-    // アカウント全体のPnLイベントを追加
     monitor.on('accountPnl', (data: unknown) => {
       const pnlData = data as AccountPnL
       console.log('Account PnL updated:', pnlData)
@@ -114,14 +96,15 @@ export default function PositionsPage() {
       setLastUpdate(new Date().toLocaleTimeString())
     })
 
-    monitor.on('marketStatus', (data: unknown) => {
-      const marketData = data as { status: string; message?: string }
-      setMarketMessage(marketData.message || `市場状況: ${marketData.status}`)
+    monitor.on('pnlError', (data: unknown) => {
+      const errorData = data as { contractId: number; error: string }
+      setPnlErrors(prev => new Set(prev).add(errorData.contractId))
+      console.warn(`PnL取得エラー Contract ${errorData.contractId}: ${errorData.error}`)
     })
 
     monitor.on('status', (data: unknown) => {
-      const statusData = data as { message: string }
-      setMarketMessage(statusData.message)
+      const statusData = data as { status: string; message: string }
+      console.log('Status update:', statusData.message)
     })
 
     monitor.on('error', (data: unknown) => {
@@ -129,8 +112,7 @@ export default function PositionsPage() {
       setError(errorData.message)
     })
 
-    monitor.on('connectionError', (data: unknown) => {
-      console.error('Connection error:', data)
+    monitor.on('connectionError', () => {
       setError('接続エラーが発生しました - 再接続を試行中...')
       setIsConnected(false)
     })
@@ -145,8 +127,7 @@ export default function PositionsPage() {
     }
     setIsMonitoring(false)
     setIsConnected(false)
-    setMarketMessage(null)
-    setAccountPnL(null) // アカウントPnLもクリア
+    setAccountPnL(null)
   }
 
   const handleControlMonitoring = async (action: 'start' | 'stop') => {
@@ -185,7 +166,6 @@ export default function PositionsPage() {
         isAccountLevel: true
       }
     } else {
-      // 個別ポジションから計算（フォールバック）
       const totalDaily = positions.reduce((sum, pos) => sum + (pos.dailyPnL || 0), 0)
       const totalUnrealized = positions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
       const totalRealized = positions.reduce((sum, pos) => sum + (pos.realizedPnL || 0), 0)
@@ -229,7 +209,7 @@ export default function PositionsPage() {
         {/* Status Bar */}
         <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-4 mb-6">
           <div className="flex flex-col space-y-4">
-            {/* First Row: Status and Control */}
+            {/* Control Row */}
             <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
               <div className="flex items-center space-x-6">
                 <div className="flex items-center space-x-2">
@@ -247,7 +227,7 @@ export default function PositionsPage() {
                   <>
                     <div className="text-white">
                       市場: <span className={status.marketStatus.isOpen ? 'text-green-400' : 'text-orange-400'}>
-                        {status.marketStatus.isOpen ? '開場' : '閉場'}
+                        {status.marketStatus.isOpen ? '開場' : '時間外'}
                       </span>
                     </div>
                     <div className="text-white">
@@ -280,8 +260,7 @@ export default function PositionsPage() {
                 </button>
                 <button
                   onClick={loadInitialData}
-                  disabled={loading}
-                  title="リアルタイム監視を使わずに現在のポジション情報を1回だけ取得"
+                  disabled={loading || isMonitoring}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
                 >
                   {loading ? '更新中...' : '更新'}
@@ -289,12 +268,12 @@ export default function PositionsPage() {
               </div>
             </div>
 
-            {/* Second Row: Total P&L */}
+            {/* Total P&L Row */}
             {(positions.length > 0 || accountPnL) && (
               <div className="border-t border-white/10 pt-4">
                 <div className="mb-2 text-center">
                   <span className="text-xs text-gray-400">
-                    {isAccountLevel ? 'アカウント全体のPnL（リアルタイム）' : 'ポジション合計（推定値）'}
+                    {isAccountLevel ? 'アカウント全体のPnL' : 'ポジション合計（個別損益）'}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -326,6 +305,7 @@ export default function PositionsPage() {
               </div>
             )}
 
+            {/* Error Display */}
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
                 <div className="text-red-300">{error}</div>
@@ -338,25 +318,25 @@ export default function PositionsPage() {
               </div>
             )}
 
-            {marketMessage && (
+            {/* PnL Error Notification */}
+            {pnlErrors.size > 0 && (
+              <div className="p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+                <div className="text-yellow-300">
+                  {pnlErrors.size}件のポジションで個別PnL取得に失敗しました。アカウント全体のPnLは正常に表示されています。
+                </div>
+              </div>
+            )}
+
+            {/* Market Status */}
+            {status && !status.marketStatus.isOpen && positions.length > 0 && (
               <div className="p-3 bg-orange-500/20 border border-orange-500/30 rounded-lg">
-                <div className="text-orange-300">{marketMessage}</div>
+                <div className="text-orange-300 text-center">
+                  市場時間外 - 一部の数値は最終取引日の値です
+                </div>
               </div>
             )}
           </div>
         </div>
-
-        {/* Market Hours Notice */}
-        {status && !status.marketStatus.isOpen && positions.length > 0 && (
-          <div className="bg-orange-500/10 backdrop-blur-lg rounded-xl border border-orange-500/20 p-4 mb-6">
-            <div className="text-center text-orange-300">
-              <div className="text-lg font-semibold mb-1">市場時間外</div>
-              <div className="text-sm">
-                PnL情報は市場開場中のみ更新されます。現在の値は最終取引日の終値ベースです。
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* VIX Positions */}
         {vixPositions.length > 0 && (
@@ -439,13 +419,13 @@ export default function PositionsPage() {
           <div className="text-center py-16">
             <div className="text-6xl mb-4">📊</div>
             <h3 className="text-xl text-white/70 mb-2">No positions found</h3>
-            <p className="text-gray-400 mb-6">Start monitoring to load current positions</p>
+            <p className="text-gray-400 mb-6">Click update to load current positions</p>
             <button
-              onClick={() => handleControlMonitoring('start')}
+              onClick={loadInitialData}
               disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-xl hover:from-green-600 hover:to-blue-700 transition-all duration-200"
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-200"
             >
-              Start Monitoring
+              Load Positions
             </button>
           </div>
         )}

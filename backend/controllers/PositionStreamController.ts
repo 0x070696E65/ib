@@ -23,7 +23,7 @@ export class PositionStreamController {
       })
     })
 
-    // PnL更新時
+    // 個別PnL更新時
     this.realtimeService.on('pnlUpdated', (pnlData: any) => {
       this.broadcast('pnl', {
         type: 'pnl',
@@ -32,7 +32,7 @@ export class PositionStreamController {
       })
     })
 
-    // アカウント全体のPnL更新時（新規追加）
+    // アカウント全体のPnL更新時
     this.realtimeService.on('accountPnlUpdated', (accountPnlData: any) => {
       this.broadcast('accountPnl', {
         type: 'accountPnl',
@@ -41,15 +41,11 @@ export class PositionStreamController {
       })
     })
 
-    // 市場閉場時
-    this.realtimeService.on('marketClosed', (marketStatus: any) => {
-      this.broadcast('market-status', {
-        type: 'market-status',
-        data: {
-          status: 'closed',
-          message: '市場時間外です',
-          ...marketStatus,
-        },
+    // PnLエラー時
+    this.realtimeService.on('pnlError', (errorData: any) => {
+      this.broadcast('pnlError', {
+        type: 'pnlError',
+        data: errorData,
         timestamp: new Date().toISOString(),
       })
     })
@@ -115,19 +111,6 @@ export class PositionStreamController {
       timestamp: new Date().toISOString(),
     })
 
-    // 監視開始（まだ開始していない場合）
-    if (!status.isMonitoring) {
-      try {
-        await this.realtimeService.startMonitoring()
-      } catch (error) {
-        this.sendToClient(res, 'error', {
-          type: 'error',
-          data: { message: '監視開始に失敗しました', error: String(error) },
-          timestamp: new Date().toISOString(),
-        })
-      }
-    }
-
     // クライアント切断時のクリーンアップ
     req.on('close', () => {
       this.activeConnections.delete(res)
@@ -149,15 +132,15 @@ export class PositionStreamController {
       } else {
         clearInterval(heartbeat)
       }
-    }, 30000) // 30秒間隔
+    }, 30000)
   }
 
   /**
-   * 静的ポジションデータ取得（初期表示・分析用）
+   * 静的ポジションデータ取得（初回表示・更新ボタン用）
    */
   async getStaticPositions(req: Request, res: Response): Promise<void> {
     try {
-      const positions = this.realtimeService.getCurrentPositions()
+      const positions = await this.realtimeService.getPositionsOnce()
       const status = this.realtimeService.getStatus()
 
       res.json({

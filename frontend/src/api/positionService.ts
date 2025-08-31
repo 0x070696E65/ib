@@ -62,21 +62,9 @@ export async function controlMonitoring(action: 'start' | 'stop'): Promise<{ suc
   return await res.json()
 }
 
-// 接続統計
-export async function getConnectionStats(): Promise<{
-  activeConnections: number
-  monitoringStatus: PositionStatus
-  timestamp: string
-}> {
-  const res = await fetch(`${BASE_URL}/positions/stats`)
-  return await res.json()
-}
-
 // リアルタイムポジション監視クラス
 export class PositionMonitor {
   private eventSource: EventSource | null = null
-  private positions: Position[] = []
-  private status: PositionStatus | null = null
   private callbacks: EventCallbacks = {}
 
   // イベント登録
@@ -105,36 +93,31 @@ export class PositionMonitor {
     // 初期データ受信
     this.eventSource.addEventListener('initial', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
-      this.positions = data.data.positions
-      this.status = data.data.status
       this.emit('initial', data.data)
     })
 
     // ポジション更新
     this.eventSource.addEventListener('positions', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
-      this.positions = data.data
       this.emit('positions', data.data)
     })
 
-    // PnL更新
+    // 個別PnL更新
     this.eventSource.addEventListener('pnl', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
-      this.updatePositionPnL(data.data)
       this.emit('pnl', data.data)
     })
 
-    // アカウント全体のPnL更新（新規追加）
+    // アカウント全体のPnL更新
     this.eventSource.addEventListener('accountPnl', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
-      console.log('Account PnL received in frontend:', data.data) // デバッグ用ログ
       this.emit('accountPnl', data.data)
     })
 
-    // 市場状況
-    this.eventSource.addEventListener('market-status', (event: MessageEvent) => {
+    // PnLエラー通知
+    this.eventSource.addEventListener('pnlError', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
-      this.emit('marketStatus', data.data)
+      this.emit('pnlError', data.data)
     })
 
     // ステータス更新
@@ -143,7 +126,7 @@ export class PositionMonitor {
       this.emit('status', data.data)
     })
 
-    // エラー (MessageEventを使用)
+    // エラー
     this.eventSource.addEventListener('error', (event: MessageEvent) => {
       const data = JSON.parse(event.data)
       this.emit('error', data.data)
@@ -162,34 +145,11 @@ export class PositionMonitor {
     }
   }
 
-  // 個別ポジションのPnL更新
-  private updatePositionPnL(pnlData: Position): void {
-    const index = this.positions.findIndex((pos) => pos.contractId === pnlData.contractId)
-    if (index !== -1) {
-      this.positions[index] = { ...this.positions[index], ...pnlData }
-    }
-  }
-
   // 接続終了
   disconnect(): void {
     if (this.eventSource) {
       this.eventSource.close()
       this.eventSource = null
     }
-  }
-
-  // 現在のポジション取得
-  getPositions(): Position[] {
-    return this.positions
-  }
-
-  // VIXポジション取得
-  getVixPositions(): Position[] {
-    return this.positions.filter((pos) => pos.symbol === 'VIX')
-  }
-
-  // 接続状況取得
-  getStatus(): PositionStatus | null {
-    return this.status
   }
 }
