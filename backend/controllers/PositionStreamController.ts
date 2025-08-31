@@ -32,6 +32,15 @@ export class PositionStreamController {
       })
     })
 
+    // アカウント全体のPnL更新時（新規追加）
+    this.realtimeService.on('accountPnlUpdated', (accountPnlData: any) => {
+      this.broadcast('accountPnl', {
+        type: 'accountPnl',
+        data: accountPnlData,
+        timestamp: new Date().toISOString(),
+      })
+    })
+
     // 市場閉場時
     this.realtimeService.on('marketClosed', (marketStatus: any) => {
       this.broadcast('market-status', {

@@ -18,6 +18,7 @@ export interface Position {
   value?: number
   strike?: number
   expiry?: string
+  mark?: number
   optionType?: 'PUT' | 'CALL' | null
 }
 
@@ -121,6 +122,13 @@ export class PositionMonitor {
       const data = JSON.parse(event.data)
       this.updatePositionPnL(data.data)
       this.emit('pnl', data.data)
+    })
+
+    // アカウント全体のPnL更新（新規追加）
+    this.eventSource.addEventListener('accountPnl', (event: MessageEvent) => {
+      const data = JSON.parse(event.data)
+      console.log('Account PnL received in frontend:', data.data) // デバッグ用ログ
+      this.emit('accountPnl', data.data)
     })
 
     // 市場状況

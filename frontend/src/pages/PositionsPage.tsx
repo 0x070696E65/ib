@@ -3,11 +3,18 @@ import { useState, useEffect, useRef } from 'react'
 import { PositionMonitor, fetchCurrentPositions, controlMonitoring } from '../api/positionService'
 import type { Position, PositionStatus } from '../api/positionService'
 
+interface AccountPnL {
+  dailyPnL: number
+  unrealizedPnL: number
+  realizedPnL: number
+}
+
 export default function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([])
   const [status, setStatus] = useState<PositionStatus | null>(null)
+  const [accountPnL, setAccountPnL] = useState<AccountPnL | null>(null) // アカウント全体のPnL
   const [isConnected, setIsConnected] = useState(false)
-  const [isMonitoring, setIsMonitoring] = useState(false) // 明確な監視状態管理
+  const [isMonitoring, setIsMonitoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [marketMessage, setMarketMessage] = useState<string | null>(null)
@@ -16,7 +23,6 @@ export default function PositionsPage() {
   const monitorRef = useRef<PositionMonitor | null>(null)
 
   useEffect(() => {
-    // 初期データ読み込み（自動では監視開始しない）
     loadInitialData()
 
     return () => {
@@ -30,6 +36,11 @@ export default function PositionsPage() {
     try {
       setLoading(true)
       const data = await fetchCurrentPositions()
+      data.positions.sort((a, b) => {
+        if (!a.expiry) return 1
+        if (!b.expiry) return -1
+        return parseInt(a.expiry, 10) - parseInt(b.expiry, 10)
+      })
       setPositions(data.positions)
       setStatus(data.status)
     } catch (err) {
@@ -50,7 +61,6 @@ export default function PositionsPage() {
     setIsMonitoring(true)
     setError(null)
 
-    // イベントリスナー設定
     monitor.on('initial', (data: unknown) => {
       const parsedData = data as { positions: Position[]; status: PositionStatus }
       console.log('Initial data received:', parsedData.positions.length)
@@ -64,17 +74,21 @@ export default function PositionsPage() {
       const newPositions = data as Position[]
       console.log('Positions updated:', newPositions.length)
       
-      // 既存のPnLデータを保持しながらポジションを更新
       setPositions(prevPositions => {
         const updatedPositions = newPositions.map(newPos => {
           const existingPos = prevPositions.find(p => p.contractId === newPos.contractId)
-          // 既存のPnLデータがあれば保持
           return existingPos ? { ...newPos, 
             dailyPnL: existingPos.dailyPnL, 
             unrealizedPnL: existingPos.unrealizedPnL,
             realizedPnL: existingPos.realizedPnL,
-            value: existingPos.value
+            value: existingPos.value,
+            mark: existingPos.mark
           } : newPos
+        })
+        updatedPositions.sort((a, b) => {
+          if (!a.expiry) return 1
+          if (!b.expiry) return -1
+          return parseInt(a.expiry, 10) - parseInt(b.expiry, 10)
         })
         return updatedPositions
       })
@@ -84,12 +98,19 @@ export default function PositionsPage() {
 
     monitor.on('pnl', (data: unknown) => {
       const pnlData = data as Position
-      console.log('PnL updated:', pnlData.contractId, pnlData.unrealizedPnL)
       setPositions(prev => prev.map(pos => 
         pos.contractId === pnlData.contractId 
           ? { ...pos, ...pnlData }
           : pos
       ))
+      setLastUpdate(new Date().toLocaleTimeString())
+    })
+
+    // アカウント全体のPnLイベントを追加
+    monitor.on('accountPnl', (data: unknown) => {
+      const pnlData = data as AccountPnL
+      console.log('Account PnL updated:', pnlData)
+      setAccountPnL(pnlData)
       setLastUpdate(new Date().toLocaleTimeString())
     })
 
@@ -106,14 +127,12 @@ export default function PositionsPage() {
     monitor.on('error', (data: unknown) => {
       const errorData = data as { message: string }
       setError(errorData.message)
-      // エラーが発生しても監視は継続（接続エラーでない限り）
     })
 
     monitor.on('connectionError', (data: unknown) => {
       console.error('Connection error:', data)
       setError('接続エラーが発生しました - 再接続を試行中...')
       setIsConnected(false)
-      // 監視状態は維持（自動再接続のため）
     })
 
     monitor.connect()
@@ -127,6 +146,7 @@ export default function PositionsPage() {
     setIsMonitoring(false)
     setIsConnected(false)
     setMarketMessage(null)
+    setAccountPnL(null) // アカウントPnLもクリア
   }
 
   const handleControlMonitoring = async (action: 'start' | 'stop') => {
@@ -134,14 +154,10 @@ export default function PositionsPage() {
       setLoading(true)
       
       if (action === 'start') {
-        // サーバー側の監視開始
         await controlMonitoring('start')
-        // クライアント側の監視開始
         startPositionMonitoring()
       } else {
-        // サーバー側の監視停止
         await controlMonitoring('stop')
-        // クライアント側の監視停止
         stopPositionMonitoring()
       }
     } catch (err) {
@@ -155,21 +171,36 @@ export default function PositionsPage() {
   const formatPnL = (value: number | undefined) => {
     if (value === undefined) return '-'
     const color = value >= 0 ? 'text-green-400' : 'text-red-400'
-    const sign = value >= 0 ? '+' : ''
-    return <span className={color}>{sign}${value.toFixed(2)}</span>
+    const sign = value >= 0 ? '+' : '-'
+    return <span className={color}>{sign}${Math.abs(value).toFixed(2)}</span>
   }
 
-  // 総損益計算
-  const calculateTotalPnL = () => {
-    const totalDaily = positions.reduce((sum, pos) => sum + (pos.dailyPnL || 0), 0)
-    const totalUnrealized = positions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
-    const totalRealized = positions.reduce((sum, pos) => sum + (pos.realizedPnL || 0), 0)
-    const totalValue = positions.reduce((sum, pos) => sum + (pos.value || 0), 0)
-    
-    return { totalDaily, totalUnrealized, totalRealized, totalValue }
+  // PnL表示の優先順位: アカウント全体のPnL > 個別ポジションの合計
+  const getDisplayPnL = () => {
+    if (accountPnL) {
+      return {
+        totalDaily: accountPnL.dailyPnL,
+        totalUnrealized: accountPnL.unrealizedPnL,
+        totalRealized: accountPnL.realizedPnL,
+        isAccountLevel: true
+      }
+    } else {
+      // 個別ポジションから計算（フォールバック）
+      const totalDaily = positions.reduce((sum, pos) => sum + (pos.dailyPnL || 0), 0)
+      const totalUnrealized = positions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
+      const totalRealized = positions.reduce((sum, pos) => sum + (pos.realizedPnL || 0), 0)
+      return {
+        totalDaily,
+        totalUnrealized,
+        totalRealized,
+        isAccountLevel: false
+      }
+    }
   }
 
-  const { totalDaily, totalUnrealized, totalRealized, totalValue } = calculateTotalPnL()
+  const { totalDaily, totalUnrealized, totalRealized, isAccountLevel } = getDisplayPnL()
+  const totalValue = positions.reduce((sum, pos) => sum + (pos.value || pos.marketValue || 0), 0)
+  
   const vixPositions = positions.filter(pos => pos.symbol === 'VIX')
   const otherPositions = positions.filter(pos => pos.symbol !== 'VIX')
 
@@ -259,8 +290,13 @@ export default function PositionsPage() {
             </div>
 
             {/* Second Row: Total P&L */}
-            {positions.length > 0 && (
+            {(positions.length > 0 || accountPnL) && (
               <div className="border-t border-white/10 pt-4">
+                <div className="mb-2 text-center">
+                  <span className="text-xs text-gray-400">
+                    {isAccountLevel ? 'アカウント全体のPnL（リアルタイム）' : 'ポジション合計（推定値）'}
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-white/5 rounded-lg p-3 text-center">
                     <div className="text-sm text-gray-400">日次損益</div>
@@ -310,6 +346,18 @@ export default function PositionsPage() {
           </div>
         </div>
 
+        {/* Market Hours Notice */}
+        {status && !status.marketStatus.isOpen && positions.length > 0 && (
+          <div className="bg-orange-500/10 backdrop-blur-lg rounded-xl border border-orange-500/20 p-4 mb-6">
+            <div className="text-center text-orange-300">
+              <div className="text-lg font-semibold mb-1">市場時間外</div>
+              <div className="text-sm">
+                PnL情報は市場開場中のみ更新されます。現在の値は最終取引日の終値ベースです。
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* VIX Positions */}
         {vixPositions.length > 0 && (
           <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 mb-6">
@@ -326,6 +374,7 @@ export default function PositionsPage() {
                     <th className="text-left py-3 px-4 text-white font-semibold">Avg Cost</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Daily P&L</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Unrealized</th>
+                    <th className="text-left py-3 px-4 text-white font-semibold">Mark</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Value</th>
                   </tr>
                 </thead>
@@ -340,7 +389,8 @@ export default function PositionsPage() {
                       <td className="py-3 px-4 text-white font-mono">${pos.avgCost.toFixed(2)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.dailyPnL)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.unrealizedPnL)}</td>
-                      <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || '-'}</td>
+                      <td className="py-3 px-4 font-mono text-white">${pos.mark?.toFixed(2) || '-'}</td>
+                      <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || pos.marketValue?.toFixed(2) || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -375,7 +425,7 @@ export default function PositionsPage() {
                       <td className="py-3 px-4 text-white font-mono">${pos.avgCost.toFixed(2)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.dailyPnL)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.unrealizedPnL)}</td>
-                      <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || '-'}</td>
+                      <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || pos.marketValue?.toFixed(2) || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

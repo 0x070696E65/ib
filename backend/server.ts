@@ -1,14 +1,29 @@
 // server.ts
 import express from 'express'
 import cors from 'cors'
-import mongoose from 'mongoose'
+import dotenv from 'dotenv'
+import path from 'path'
 import vixOptionRoutes from './routes/vixOption'
 import vixExpirationsRoutes from './routes/vixExpirations'
 import vixFutureRoutes from './routes/vixFuture'
 import positionRoutes from './routes/positions'
+import tradeRoutes from './routes/trades'
+
+// データベース接続
+import { connectToDatabase } from './database/connection'
+
+dotenv.config()
 
 const app = express()
-const port = 3001
+const PORT = process.env.PORT || 3001
+
+// ミドルウェア
+app.use(cors())
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+
+// データベース接続
+connectToDatabase()
 
 // CORS設定
 app.use(
@@ -18,18 +33,21 @@ app.use(
   })
 )
 
-app.use(express.json())
-
-// MongoDB接続
-mongoose.connect('mongodb://127.0.0.1:27017/vixdb', {})
-
-// 既存のルート
-app.use('/api/vix-option', vixOptionRoutes)
+// API ルート
+app.use('/api/positions', positionRoutes)
 app.use('/api/vix-expirations', vixExpirationsRoutes)
 app.use('/api/vix-future', vixFutureRoutes)
+app.use('/api/vix-option', vixOptionRoutes)
+app.use('/api/trades', tradeRoutes)
 
-// 新しいポジション監視ルート
-app.use('/api/positions', positionRoutes)
+// 静的ファイル配信（本番環境用）
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../../frontend/dist')))
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'))
+  })
+}
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
@@ -50,8 +68,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   })
 })
 
-app.listen(port, () => {
-  console.log(`Backend server running at http://localhost:${port}`)
-  console.log(`Position SSE endpoint: http://localhost:${port}/api/positions/stream`)
-  console.log(`Position API: http://localhost:${port}/api/positions/current`)
+app.listen(PORT, () => {
+  console.log(`🚀 サーバーがポート ${PORT} で起動しました`)
 })

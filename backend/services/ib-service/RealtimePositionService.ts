@@ -11,6 +11,7 @@ export interface PositionWithPnL extends Position {
   value?: number
   strike?: number | null
   expiry?: string | null
+  mark?: number
   optionType?: 'PUT' | 'CALL' | null
 }
 
@@ -22,10 +23,12 @@ export interface MarketStatus {
 
 export class RealtimePositionService extends EventEmitter {
   private positions: Map<string, PositionWithPnL> = new Map()
-  private pnlSubscriptions: Set<number> = new Set()
+  private pnlSubscriptions: Map<number, number> = new Map() // reqId -> contractId
+  private activeSubscriptions: Set<number> = new Set() // contractIds that are actively subscribed
   private monitoringInterval?: NodeJS.Timeout
   private isMonitoring: boolean = false
   private marketStatus: MarketStatus = { isOpen: false }
+  private isSubscribingPnL: boolean = false
 
   constructor(private ibService: IbService) {
     super()
@@ -39,13 +42,23 @@ export class RealtimePositionService extends EventEmitter {
 
     // PnLイベント
     this.ibService.getIbApi().on(EventName.pnlSingle as any, this.onPnLSingle.bind(this) as any)
+    this.ibService.getIbApi().on(EventName.pnl as any, this.onPnL.bind(this) as any)
 
     // エラーハンドリング
     this.ibService.getIbApi().on(EventName.error, this.onError.bind(this))
   }
 
   private onPosition(accountName: string, contract: any, position: number, avgCost: number): void {
-    if (position === 0) return // ポジション0は無視
+    if (position === 0) {
+      // ポジションが0の場合、既存のポジションを削除
+      const key = `${contract.conId}`
+      if (this.positions.has(key)) {
+        this.positions.delete(key)
+        // 対応するPnL購読も停止
+        this.unsubscribeFromPnL(contract.conId)
+      }
+      return
+    }
 
     const key = `${contract.conId}`
     const positionData: PositionWithPnL = {
@@ -72,8 +85,25 @@ export class RealtimePositionService extends EventEmitter {
   }
 
   private onPositionEnd(): void {
-    // ポジション更新完了
     this.emit('positionsUpdated', Array.from(this.positions.values()))
+
+    // PnL購読を遅延実行（重複を避けるため）
+    if (!this.isSubscribingPnL) {
+      setTimeout(() => {
+        this.subscribeToAllPnL()
+      }, 1000)
+    }
+  }
+
+  private onPnL(reqId: number, dailyPnL: number, unrealizedPnL: number, realizedPnL: number): void {
+    console.log(`Account PnL Update: dailyPnL=${dailyPnL}, unrealizedPnL=${unrealizedPnL}, realizedPnL=${realizedPnL}`)
+
+    // アカウント全体のPnL情報をemit
+    this.emit('accountPnlUpdated', {
+      dailyPnL,
+      unrealizedPnL,
+      realizedPnL,
+    })
   }
 
   private onPnLSingle(
@@ -84,10 +114,10 @@ export class RealtimePositionService extends EventEmitter {
     realizedPnL: number,
     value: number
   ): void {
-    const request = this.ibService.getPendingRequest(reqId)
-    if (!request || !request.contractId) return
+    const contractId = this.pnlSubscriptions.get(reqId)
+    if (!contractId) return
 
-    const key = `${request.contractId}`
+    const key = `${contractId}`
     const position = this.positions.get(key)
 
     if (position) {
@@ -96,11 +126,17 @@ export class RealtimePositionService extends EventEmitter {
       position.realizedPnL = realizedPnL
       position.value = value
 
+      // markの計算を修正
+      if (position.position !== 0 && value !== 0) {
+        const multiplier = position.secType === 'OPT' ? 100 : 1
+        position.mark = value / (Math.abs(position.position) * multiplier)
+      }
+
       this.positions.set(key, position)
 
       // 個別ポジションPnL更新イベント
       this.emit('pnlUpdated', {
-        contractId: request.contractId,
+        contractId: contractId,
         ...position,
       })
     }
@@ -108,6 +144,21 @@ export class RealtimePositionService extends EventEmitter {
 
   private onError(error: Error, code: number, reqId?: number): void {
     console.warn(`リアルタイム監視エラー (Code: ${code}):`, error.message)
+
+    // PnL関連のエラーハンドリング
+    if (reqId && this.pnlSubscriptions.has(reqId)) {
+      const contractId = this.pnlSubscriptions.get(reqId)
+      console.warn(`PnL Request ${reqId} failed for contract ${contractId}:`, error.message)
+
+      // 失敗した購読を削除
+      this.pnlSubscriptions.delete(reqId)
+      if (contractId) {
+        this.activeSubscriptions.delete(contractId)
+      }
+
+      // pending requestも削除
+      this.ibService.removePendingRequest(reqId)
+    }
 
     if (code >= 500) {
       this.emit('connectionError', { error, code })
@@ -127,11 +178,13 @@ export class RealtimePositionService extends EventEmitter {
       // 初回ポジション取得
       await this.refreshPositions()
 
-      // 定期更新開始（3秒間隔）
+      // 定期更新開始（5秒間隔に変更）
       this.monitoringInterval = setInterval(async () => {
-        // 市場時間関係なく常にポジション取得
-        await this.refreshPositions()
-      }, 3000)
+        this.updateMarketStatus()
+        if (this.marketStatus.isOpen) {
+          await this.refreshPositions()
+        }
+      }, 5000)
 
       this.emit('monitoringStarted')
       console.log('リアルタイム監視を開始しました')
@@ -154,14 +207,47 @@ export class RealtimePositionService extends EventEmitter {
       this.monitoringInterval = undefined
     }
 
-    // PnL購読を停止
-    for (const reqId of this.pnlSubscriptions) {
-      this.ibService.getIbApi().cancelPnLSingle(reqId)
-    }
-    this.pnlSubscriptions.clear()
+    // PnL購読を安全に停止
+    this.stopAllPnLSubscriptions()
 
     this.emit('monitoringStopped')
     console.log('リアルタイム監視を停止しました')
+  }
+
+  /**
+   * すべてのPnL購読を停止
+   */
+  private stopAllPnLSubscriptions(): void {
+    for (const [reqId, contractId] of this.pnlSubscriptions) {
+      try {
+        this.ibService.getIbApi().cancelPnLSingle(reqId)
+        console.log(`PnL subscription cancelled: reqId=${reqId}, contractId=${contractId}`)
+      } catch (error) {
+        console.warn(`Failed to cancel PnL subscription ${reqId}:`, error)
+      }
+    }
+
+    this.pnlSubscriptions.clear()
+    this.activeSubscriptions.clear()
+  }
+
+  /**
+   * 特定のcontractIdのPnL購読を停止
+   */
+  private unsubscribeFromPnL(contractId: number): void {
+    for (const [reqId, cId] of this.pnlSubscriptions) {
+      if (cId === contractId) {
+        try {
+          this.ibService.getIbApi().cancelPnLSingle(reqId)
+          this.pnlSubscriptions.delete(reqId)
+          this.activeSubscriptions.delete(contractId)
+          console.log(`PnL subscription cancelled for contract ${contractId}`)
+        } catch (error) {
+          console.warn(`Failed to cancel PnL subscription for contract ${contractId}:`, error)
+        }
+        break
+      }
+    }
   }
 
   /**
@@ -169,25 +255,9 @@ export class RealtimePositionService extends EventEmitter {
    */
   private async refreshPositions(): Promise<void> {
     try {
-      // ポジション情報をリクエスト（市場時間関係なく常に取得）
+      // ポジション一覧をリクエスト
       this.ibService.getIbApi().reqPositions()
-
-      // 既存のPnL購読をクリア
-      for (const reqId of this.pnlSubscriptions) {
-        this.ibService.getIbApi().cancelPnLSingle(reqId)
-      }
-      this.pnlSubscriptions.clear()
-
-      // 各ポジションのPnLを購読（市場時間関係なく常に実行）
-      setTimeout(() => {
-        this.subscribeToAllPnL()
-      }, 1000) // ポジション取得完了を待つ
-
-      // 市場状況を更新して通知
-      this.updateMarketStatus()
-      if (!this.marketStatus.isOpen) {
-        this.emit('marketClosed', this.marketStatus)
-      }
+      // → onPosition / onPositionEnd で positions が更新される
     } catch (error) {
       this.emit('error', error)
     }
@@ -197,20 +267,105 @@ export class RealtimePositionService extends EventEmitter {
    * すべてのポジションのPnLを購読
    */
   private subscribeToAllPnL(): void {
-    for (const position of this.positions.values()) {
-      if (position.contractId) {
-        const reqId = this.ibService.getNextRequestId()
+    if (this.isSubscribingPnL) return
 
+    this.isSubscribingPnL = true
+
+    try {
+      // まず全体のPnLを購読してみる
+      this.subscribeToAccountPnL()
+
+      // 個別ポジションのPnL購読は一時的に無効化
+      console.log('Individual PnL subscription temporarily disabled due to API issues')
+
+      /*
+      for (const position of this.positions.values()) {
+        if (!position.contractId || !position.account) {
+          console.warn(`Invalid position data for PnL subscription:`, position)
+          continue
+        }
+
+        // すでに購読中の場合はスキップ
+        if (this.activeSubscriptions.has(position.contractId)) {
+          continue
+        }
+
+        // バリデーション
+        if (!this.isValidForPnLSubscription(position)) {
+          console.warn(`Position validation failed for contract ${position.contractId}:`, position)
+          continue
+        }
+
+        const reqId = this.ibService.getNextRequestId()
+        
+        // pending requestに追加
         this.ibService.addPendingRequest(reqId, {
           type: 'pnlSingle',
           contractId: position.contractId,
           account: position.account,
+          resolved: false,
+          timestamp: Date.now(),
+          reject: (err: Error) => {
+            console.error(`PnL Request ${reqId} failed:`, err.message)
+          },
         })
 
-        this.ibService.getIbApi().reqPnLSingle(reqId, position.account, '', position.contractId)
-        this.pnlSubscriptions.add(reqId)
+        // 購読マップに追加
+        this.pnlSubscriptions.set(reqId, position.contractId)
+        this.activeSubscriptions.add(position.contractId)
+
+        // PnL購読開始 - modelCodeを明示的に指定
+        this.ibService.getIbApi().reqPnLSingle(reqId, position.account, position.account, position.contractId)
+        
+        console.log(`PnL subscription started: reqId=${reqId}, contractId=${position.contractId}, account=${position.account}`)
       }
+      */
+    } catch (error) {
+      console.error('Error in subscribeToAllPnL:', error)
+    } finally {
+      this.isSubscribingPnL = false
     }
+  }
+
+  /**
+   * アカウント全体のPnLを購読
+   */
+  private subscribeToAccountPnL(): void {
+    try {
+      const reqId = this.ibService.getNextRequestId()
+      const account = this.positions.size > 0 ? Array.from(this.positions.values())[0].account : ''
+
+      if (!account) {
+        console.warn('No account found for PnL subscription')
+        return
+      }
+
+      this.ibService.addPendingRequest(reqId, {
+        type: 'pnl',
+        account: account,
+        resolved: false,
+        timestamp: Date.now(),
+      })
+
+      // アカウント全体のPnLを購読
+      this.ibService.getIbApi().reqPnL(reqId, account, '')
+      console.log(`Account PnL subscription started: reqId=${reqId}, account=${account}`)
+    } catch (error) {
+      console.error('Error subscribing to account PnL:', error)
+    }
+  }
+
+  /**
+   * PnL購読のバリデーション
+   */
+  private isValidForPnLSubscription(position: PositionWithPnL): boolean {
+    return !!(
+      position.contractId &&
+      position.account &&
+      position.contractId > 0 &&
+      position.account.trim().length > 0 &&
+      position.position !== 0
+    )
   }
 
   /**
@@ -258,12 +413,14 @@ export class RealtimePositionService extends EventEmitter {
     isMonitoring: boolean
     positionCount: number
     pnlSubscriptions: number
+    activeSubscriptions: number
     marketStatus: MarketStatus
   } {
     return {
       isMonitoring: this.isMonitoring,
       positionCount: this.positions.size,
       pnlSubscriptions: this.pnlSubscriptions.size,
+      activeSubscriptions: this.activeSubscriptions.size,
       marketStatus: this.marketStatus,
     }
   }

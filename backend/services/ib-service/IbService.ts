@@ -1,6 +1,6 @@
 // services/ib-service/IbService.ts
 import { IBApi, EventName } from '@stoqey/ib'
-import { ConnectionInfo, PendingRequestInfo, PendingRequestsStatus } from './types'
+import { ConnectionInfo, PendingRequestsStatus } from './types'
 
 export class IbService {
   private static instance: IbService
@@ -27,9 +27,9 @@ export class IbService {
     this.setupEventListeners()
   }
 
-  static getInstance(): IbService {
+  static getInstance(port = 4001, host = '127.0.0.1', clientId = 10): IbService {
     if (!this.instance) {
-      this.instance = new IbService(4001, '127.0.0.1', 10)
+      this.instance = new IbService(port, host, clientId)
     }
     return this.instance
   }
