@@ -1,13 +1,14 @@
 // backend/controllers/TradeController.ts
 import { Request, Response } from 'express'
-import { TradeDataService } from '../services/ib-service/TradeDataService'
+import { AggregatedTradeService } from '../services/ib-service/AggregatedTradeService'
 import { createIbServices } from '../services/ib-service'
+import { TradeOrder } from '../models/TradeOrder'
 
 export class TradeController {
-  private tradeDataService: TradeDataService
+  private aggregatedTradeService: AggregatedTradeService
 
   constructor() {
-    this.tradeDataService = new TradeDataService()
+    this.aggregatedTradeService = new AggregatedTradeService()
   }
 
   /**
@@ -16,7 +17,7 @@ export class TradeController {
   async importFlexData(req: Request, res: Response): Promise<void> {
     try {
       console.log('Flex Query データインポート開始...')
-      const result = await this.tradeDataService.importFlexExecutions()
+      const result = await this.aggregatedTradeService.importAndAggregateFlexExecutions()
 
       res.json({
         success: true,
@@ -41,13 +42,13 @@ export class TradeController {
       const { positions } = createIbServices()
       const currentPositions = await positions.getCurrentPositions()
 
-      const matchResults = await this.tradeDataService.matchPositionsWithExecutions(currentPositions as any[])
+      const matchResults = await this.aggregatedTradeService.matchPositionsWithOrders(currentPositions)
 
       res.json({
         success: true,
         data: {
           totalPositions: currentPositions.length,
-          matchedPositions: matchResults.filter((r) => r.matched).length,
+          matchedPositions: matchResults.filter((r: any) => r.matched).length,
           results: matchResults,
         },
       })
@@ -87,7 +88,7 @@ export class TradeController {
       const { positions } = createIbServices()
       const currentPositions = await positions.getCurrentPositions()
 
-      const bundle = await this.tradeDataService.createBundle({ name, positionKeys }, currentPositions as any[])
+      const bundle = await this.aggregatedTradeService.createBundle({ name, positionKeys }, currentPositions)
 
       res.json({
         success: true,
@@ -122,7 +123,7 @@ export class TradeController {
       const { positions } = createIbServices()
       const currentPositions = await positions.getCurrentPositions()
 
-      await this.tradeDataService.tagSinglePosition(positionKey, tag, currentPositions as any[])
+      await this.aggregatedTradeService.tagSinglePosition(positionKey, tag, currentPositions)
 
       res.json({
         success: true,
@@ -143,7 +144,7 @@ export class TradeController {
    */
   async getAnalysisData(req: Request, res: Response): Promise<void> {
     try {
-      const analysisData = await this.tradeDataService.getAnalysisData()
+      const analysisData = await this.aggregatedTradeService.getAnalysisData()
 
       res.json({
         success: true,
@@ -178,16 +179,15 @@ export class TradeController {
         if (endDate) filter.tradeDate.$lte = new Date(endDate as string)
       }
 
-      const { TradeExecution } = await import('../models/TradeExecution.js')
-      const executions = await TradeExecution.find(filter)
+      const orders = await TradeOrder.find(filter)
         .sort({ tradeDate: -1 })
         .limit(parseInt(limit as string))
 
       res.json({
         success: true,
         data: {
-          executions,
-          count: executions.length,
+          orders,
+          count: orders.length,
         },
       })
     } catch (error) {
@@ -208,10 +208,27 @@ export class TradeController {
       const { status } = req.query
       const filter: any = {}
 
-      if (status) filter.status = status
+      if (status) filter.positionStatus = status
 
-      const { TradeBundle } = await import('../models/TradeBundle.js')
-      const bundles = await TradeBundle.find(filter).sort({ createdAt: -1 })
+      // bundleId が存在するもののみを取得
+      filter.bundleId = { $exists: true, $ne: null }
+
+      const bundles = await TradeOrder.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: '$bundleId',
+            name: { $first: '$bundleId' }, // バンドル名の代わりにbundleIdを使用
+            symbol: { $first: '$symbol' },
+            expiry: { $first: '$expiry' },
+            orderCount: { $sum: 1 },
+            totalPnL: { $sum: '$totalRealizedPnL' },
+            status: { $first: '$positionStatus' },
+            createdAt: { $min: '$createdAt' },
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ])
 
       res.json({
         success: true,

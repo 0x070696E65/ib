@@ -277,7 +277,7 @@ export class AggregatedTradeService {
    * リアルタイムポジションとマッチング
    */
   async matchPositionsWithOrders(positions: any[]): Promise<any[]> {
-    const results: { matched: boolean; position: any; tradeOrder?: any }[] = []
+    const results = []
 
     for (const position of positions) {
       if (position.secType !== 'OPT' || !position.strike || !position.expiry) {
@@ -285,10 +285,13 @@ export class AggregatedTradeService {
         continue
       }
 
+      // expiry フォーマット変換: "250917" → "20250917"
+      const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
+
       const matchingOrder = await TradeOrder.findOne({
         symbol: position.symbol,
         strike: position.strike,
-        expiry: this.formatExpiry(position.expiry),
+        expiry: formattedExpiry,
         putCall: position.optionType === 'PUT' ? 'P' : 'C',
         positionStatus: 'OPEN',
       })
@@ -308,12 +311,126 @@ export class AggregatedTradeService {
   }
 
   /**
-   * 満期日フォーマットの統一
+   * expiry フォーマット変換: "250917" → "20250917"
    */
-  private formatExpiry(expiry: string): string {
+  private convertExpiryToFullFormat(expiry: string): string {
+    if (!expiry) return ''
+
+    // 既に8桁の場合はそのまま
+    if (expiry.length === 8) {
+      return expiry
+    }
+
+    // 6桁の場合は先頭に"20"を追加
+    if (expiry.length === 6) {
+      return `20${expiry}`
+    }
+
+    // ハイフン形式の場合は変換
     if (expiry.includes('-')) {
       return expiry.replace(/-/g, '')
     }
+
     return expiry
+  }
+
+  /**
+   * 満期日フォーマットの統一（既存メソッドを更新）
+   */
+  private formatExpiry(expiry: string): string {
+    return this.convertExpiryToFullFormat(expiry)
+  }
+
+  /**
+   * ポジションの一意キーを生成
+   */
+  private generatePositionKey(position: any): string {
+    return `${position.symbol}_${position.strike}_${position.expiry}_${position.optionType}`
+  }
+
+  /**
+   * バンドルを作成（PPタグ）
+   */
+  async createBundle(bundleRequest: { name: string; positionKeys: string[] }, positions: any[]): Promise<any> {
+    const selectedPositions = positions.filter((pos) =>
+      bundleRequest.positionKeys.includes(this.generatePositionKey(pos))
+    )
+
+    if (selectedPositions.length < 2) {
+      throw new Error('バンドルには最低2つのポジションが必要です')
+    }
+
+    const orderIds: number[] = []
+    let symbol = ''
+    let expiry: string | undefined = ''
+
+    for (const position of selectedPositions) {
+      const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
+
+      const order = await TradeOrder.findOne({
+        symbol: position.symbol,
+        strike: position.strike,
+        expiry: formattedExpiry,
+        putCall: position.optionType === 'PUT' ? 'P' : 'C',
+        positionStatus: 'OPEN',
+      })
+
+      if (order) {
+        orderIds.push(order.orderID)
+        symbol = order.symbol
+        expiry = order.expiry
+      }
+    }
+
+    if (orderIds.length === 0) {
+      throw new Error('対応する発注データが見つかりません')
+    }
+
+    const bundleId = `bundle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    await TradeOrder.updateMany({ orderID: { $in: orderIds } }, { $set: { bundleId, tag: 'PP' } })
+
+    console.log(`バンドル "${bundleRequest.name}" を作成: ${orderIds.length}件の発注`)
+
+    return {
+      bundleId,
+      name: bundleRequest.name,
+      symbol,
+      expiry,
+      orderCount: orderIds.length,
+      orderIds,
+    }
+  }
+
+  /**
+   * 単独ポジションにタグ付け（P+, P-）
+   */
+  async tagSinglePosition(positionKey: string, tag: 'P+' | 'P-', positions: any[]): Promise<void> {
+    const position = positions.find((pos) => this.generatePositionKey(pos) === positionKey)
+
+    if (!position) {
+      throw new Error('ポジションが見つかりません')
+    }
+
+    const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
+
+    const order = await TradeOrder.findOneAndUpdate(
+      {
+        symbol: position.symbol,
+        strike: position.strike,
+        expiry: formattedExpiry,
+        putCall: position.optionType === 'PUT' ? 'P' : 'C',
+        positionStatus: 'OPEN',
+      },
+      {
+        $set: { tag },
+      }
+    )
+
+    if (!order) {
+      throw new Error('対応する発注データが見つかりません')
+    }
+
+    console.log(`ポジション ${position.symbol} ${position.strike}${position.optionType} に ${tag} タグを設定`)
   }
 }

@@ -326,28 +326,40 @@ export class RealtimePositionService extends EventEmitter {
 
   // オプション情報抽出メソッド
   private extractStrikeFromLocalSymbol(localSymbol: string): number | null {
+    console.log('extractStrike input:', localSymbol)
     if (!localSymbol) return null
     const match = localSymbol.match(/([CP])(\d{8})$/)
+    console.log('extractStrike match:', match)
     if (match) {
-      return parseInt(match[2]) / 1000
+      const result = parseInt(match[2]) / 1000
+      console.log('extractStrike result:', result)
+      return result
     }
     return null
   }
 
   private extractExpiryFromLocalSymbol(localSymbol: string): string | null {
+    console.log('extractExpiry input:', localSymbol)
     if (!localSymbol) return null
-    const match = localSymbol.match(/\s+(\d{6})[CP]/)
+    const match = localSymbol.match(/(\d{6})[CP]/)
+    console.log('extractExpiry match:', match)
     if (match) {
-      return `20${match[1]}`
+      const result = `20${match[1]}`
+      console.log('extractExpiry result:', result)
+      return result
     }
     return null
   }
 
   private extractOptionType(localSymbol: string): 'PUT' | 'CALL' | null {
+    console.log('extractOptionType input:', localSymbol)
     if (!localSymbol) return null
     const match = localSymbol.match(/([CP])\d{8}$/)
+    console.log('extractOptionType match:', match)
     if (match) {
-      return match[1] === 'P' ? 'PUT' : 'CALL'
+      const result = match[1] === 'P' ? 'PUT' : 'CALL'
+      console.log('extractOptionType result:', result)
+      return result
     }
     return null
   }
