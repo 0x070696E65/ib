@@ -1,7 +1,12 @@
-// frontend/src/pages/PositionsPage.tsx
+// frontend/src/pages/PositionsPage.tsx - 拡張版
+
 import { useState, useEffect, useRef } from 'react'
+import React from 'react'
 import { PositionMonitor, fetchCurrentPositions, controlMonitoring } from '../api/positionService'
 import type { Position, PositionStatus } from '../api/positionService'
+import { fetchPositionMatching, createBundle, tagPosition, fetchAnalysisData } from '../api/tradeService'
+import type { PositionMatchingResult, BundleCreateRequest, TagPositionRequest } from '../types/api'
+import type { AnalysisData, TradeOrder } from '../types/trades'
 
 interface AccountPnL {
   dailyPnL: number
@@ -9,8 +14,15 @@ interface AccountPnL {
   realizedPnL: number
 }
 
+interface PositionWithMatch extends Position {
+  // マッチング情報
+  matched?: boolean
+  tradeOrder?: TradeOrder
+  positionKey?: string
+}
+
 export default function PositionsPage() {
-  const [positions, setPositions] = useState<Position[]>([])
+  const [positions, setPositions] = useState<PositionWithMatch[]>([])
   const [status, setStatus] = useState<PositionStatus | null>(null)
   const [accountPnL, setAccountPnL] = useState<AccountPnL | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -19,6 +31,16 @@ export default function PositionsPage() {
   const [loading, setLoading] = useState(false)
   const [pnlErrors, setPnlErrors] = useState<Set<number>>(new Set())
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
+  
+  // バンドル・タグ機能用の状態
+  const [selectedPositions, setSelectedPositions] = useState<Set<string>>(new Set())
+  const [showBundleModal, setShowBundleModal] = useState(false)
+  const [showTagModal, setShowTagModal] = useState(false)
+  const [showAnalysisPanel, setShowAnalysisPanel] = useState(false)
+  const [bundleName, setBundleName] = useState('')
+  const [selectedTag, setSelectedTag] = useState<'P+' | 'P-'>('P+')
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
+  const [matchingData, setMatchingData] = useState<PositionMatchingResult | null>(null)
   
   const monitorRef = useRef<PositionMonitor | null>(null)
 
@@ -45,11 +67,55 @@ export default function PositionsPage() {
       setPositions(data.positions)
       setStatus(data.status)
       setLastUpdate(new Date().toLocaleTimeString())
+      
+      // ポジションマッチングを実行
+      await loadPositionMatching()
     } catch (err) {
       setError('データの読み込みに失敗しました')
       console.error('Initial data load error:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPositionMatching = async () => {
+    try {
+      const matchingData = await fetchPositionMatching()
+      setMatchingData(matchingData)
+      
+      // ポジションにマッチング情報を追加
+      setPositions(prev => prev.map(pos => {
+        const match = matchingData.results.find(result => 
+          result.position?.contractId === pos.contractId
+        )
+        
+        if (match && match.matched && match.tradeOrder) {
+          return {
+            ...pos,
+            matched: true,
+            tradeOrder: match.tradeOrder,
+            positionKey: generatePositionKey(pos)
+          }
+        }
+        
+        return { ...pos, matched: false, positionKey: generatePositionKey(pos) }
+      }))
+    } catch (err) {
+      console.error('Position matching error:', err)
+    }
+  }
+
+  const generatePositionKey = (pos: Position | PositionWithMatch): string => {
+    return `${pos.symbol}_${pos.strike}_${pos.expiry}_${pos.optionType}`
+  }
+
+  const loadAnalysisData = async () => {
+    try {
+      const analysisData = await fetchAnalysisData()
+      setAnalysisData(analysisData)
+    } catch (err) {
+      console.error('Analysis data load error:', err)
+      setError('分析データの読み込みに失敗しました')
     }
   }
 
@@ -62,20 +128,23 @@ export default function PositionsPage() {
     monitorRef.current = monitor
     setIsMonitoring(true)
     setError(null)
+    setSelectedPositions(new Set()) // 監視開始時に選択をクリア
 
     monitor.on('initial', (data: unknown) => {
       const parsedData = data as { positions: Position[]; status: PositionStatus }
       console.log('Initial data received:', parsedData.positions.length)
-      setPositions(parsedData.positions)
+      setPositions(parsedData.positions.map(pos => ({ ...pos, positionKey: generatePositionKey(pos) })))
       setStatus(parsedData.status)
       setIsConnected(true)
       setLastUpdate(new Date().toLocaleTimeString())
+
+      loadPositionMatching()
     })
 
     monitor.on('positions', (data: unknown) => {
       const newPositions = data as Position[]
       console.log('Positions updated:', newPositions.length)
-      setPositions(newPositions)
+      setPositions(newPositions.map(pos => ({ ...pos, positionKey: generatePositionKey(pos) })))
       setLastUpdate(new Date().toLocaleTimeString())
     })
 
@@ -149,6 +218,92 @@ export default function PositionsPage() {
     }
   }
 
+  // ポジション選択処理
+  const handlePositionSelect = (positionKey: string) => {
+    if (isMonitoring) return // 監視中は操作不可
+
+    setSelectedPositions(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(positionKey)) {
+        newSet.delete(positionKey)
+      } else {
+        newSet.add(positionKey)
+      }
+      return newSet
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (isMonitoring) return
+    
+    const vixPositionKeys = vixPositions
+      .filter(pos => pos.matched && pos.positionKey)
+      .map(pos => pos.positionKey!)
+    
+    setSelectedPositions(new Set(vixPositionKeys))
+  }
+
+  const handleClearSelection = () => {
+    setSelectedPositions(new Set())
+  }
+
+  // バンドル作成
+  const handleCreateBundle = async () => {
+    if (selectedPositions.size < 2) {
+      setError('バンドルには2つ以上のポジションが必要です')
+      return
+    }
+
+    try {
+      const request: BundleCreateRequest = {
+        name: bundleName,
+        positionKeys: Array.from(selectedPositions)
+      }
+
+      await createBundle(request)
+      setBundleName('')
+      setShowBundleModal(false)
+      setSelectedPositions(new Set())
+      await loadPositionMatching() // データを再読み込み
+      setError(null)
+    } catch (err) {
+      console.error('Bundle creation error:', err)
+      setError('バンドルの作成に失敗しました')
+    }
+  }
+
+  // タグ付け
+  const handleTagPosition = async () => {
+    if (selectedPositions.size !== 1) {
+      setError('タグ付けは1つのポジションのみ選択してください')
+      return
+    }
+
+    try {
+      const positionKey = Array.from(selectedPositions)[0]
+      const request: TagPositionRequest = {
+        positionKey,
+        tag: selectedTag
+      }
+
+      await tagPosition(request)
+      setShowTagModal(false)
+      setSelectedPositions(new Set())
+      await loadPositionMatching() // データを再読み込み
+      setError(null)
+    } catch (err) {
+      console.error('Position tagging error:', err)
+      setError('タグ付けに失敗しました')
+    }
+  }
+
+  // バンドル合計P&Lを計算する関数
+  const calculateBundlePnL = (bundlePositions: PositionWithMatch[]) => {
+    const totalDaily = bundlePositions.reduce((sum, pos) => sum + (pos.dailyPnL || 0), 0)
+    const totalUnrealized = bundlePositions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
+    return { totalDaily, totalUnrealized }
+  }
+
   const formatPnL = (value: number | undefined) => {
     if (value === undefined) return '-'
     const color = value >= 0 ? 'text-green-400' : 'text-red-400'
@@ -182,7 +337,30 @@ export default function PositionsPage() {
   const totalValue = positions.reduce((sum, pos) => sum + (pos.value || pos.marketValue || 0), 0)
   
   const vixPositions = positions.filter(pos => pos.symbol === 'VIX')
+    .sort((a, b) => {
+      // 限月順にソート（近い限月から）
+      if (!a.expiry && !b.expiry) return 0
+      if (!a.expiry) return 1
+      if (!b.expiry) return -1
+      return new Date(a.expiry).getTime() - new Date(b.expiry).getTime()
+    })
   const otherPositions = positions.filter(pos => pos.symbol !== 'VIX')
+
+  // バンドルごとにグループ化
+  const bundledPositions = new Map<string, PositionWithMatch[]>()
+  const unbundledPositions: PositionWithMatch[] = []
+
+  vixPositions.forEach(pos => {
+    const bundleId = pos.tradeOrder?.bundleId
+    if (bundleId) {
+      if (!bundledPositions.has(bundleId)) {
+        bundledPositions.set(bundleId, [])
+      }
+      bundledPositions.get(bundleId)!.push(pos)
+    } else {
+      unbundledPositions.push(pos)
+    }
+  })
 
   return (
     <div className="w-screen min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
@@ -203,7 +381,7 @@ export default function PositionsPage() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-2">
             Real-time Positions Monitor
           </h1>
-          <p className="text-gray-400 text-lg">Live position tracking with P&L updates</p>
+          <p className="text-gray-400 text-lg">Live position tracking with P&L updates & Trade Analysis</p>
         </div>
 
         {/* Status Bar */}
@@ -234,6 +412,13 @@ export default function PositionsPage() {
                       ポジション: <span className="text-blue-400">{positions.length}</span>
                     </div>
                   </>
+                )}
+                
+                {matchingData && (
+                  <div className="text-white">
+                    マッチ: <span className="text-green-400">{matchingData.matchedPositions}</span>
+                    /<span className="text-blue-400">{matchingData.totalPositions}</span>
+                  </div>
                 )}
                 
                 {lastUpdate && (
@@ -267,6 +452,69 @@ export default function PositionsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Bundle/Tag Control Row */}
+            {!isMonitoring && vixPositions.some(pos => pos.matched) && (
+              <div className="border-t border-white/10 pt-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+                  <div className="flex items-center space-x-4">
+                    <span className="text-white">選択済み: {selectedPositions.size}件</span>
+                    <button
+                      onClick={handleSelectAll}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
+                    >
+                      全選択
+                    </button>
+                    <button
+                      onClick={handleClearSelection}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm"
+                    >
+                      選択解除
+                    </button>
+                  </div>
+                  
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        if (selectedPositions.size < 2) {
+                          setError('バンドルには2つ以上のポジションを選択してください')
+                          return
+                        }
+                        setShowBundleModal(true)
+                      }}
+                      disabled={selectedPositions.size < 2}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg"
+                    >
+                      バンドル作成
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (selectedPositions.size !== 1) {
+                          setError('タグ付けは1つのポジションのみ選択してください')
+                          return
+                        }
+                        setShowTagModal(true)
+                      }}
+                      disabled={selectedPositions.size !== 1}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg"
+                    >
+                      タグ付け
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAnalysisPanel(!showAnalysisPanel)
+                        if (!showAnalysisPanel) {
+                          loadAnalysisData()
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
+                    >
+                      分析表示
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Total P&L Row */}
             {(positions.length > 0 || accountPnL) && (
@@ -338,14 +586,84 @@ export default function PositionsPage() {
           </div>
         </div>
 
+        {/* Analysis Panel */}
+        {showAnalysisPanel && analysisData && (
+          <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 mb-6">
+            <h2 className="text-xl font-semibold text-white mb-4">Trade Analysis</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              {/* Summary */}
+              <div className="bg-white/10 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-white mb-3">総合</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">総取引数</span>
+                    <span className="text-white font-mono">{analysisData.summary.totalTrades}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">総損益</span>
+                    <span className="font-mono">{formatPnL(analysisData.summary.totalPnL)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">勝率</span>
+                    <span className="text-white font-mono">{(analysisData.summary.winRate * 100).toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* By Tag */}
+              <div className="bg-white/10 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-white mb-3">タグ別</h3>
+                <div className="space-y-2">
+                  {Object.entries(analysisData.byTag).map(([tag, data]) => (
+                    <div key={tag} className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-purple-300 font-semibold">{tag}</span>
+                        <span className="text-gray-300">{data.count}件</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">平均</span>
+                        <span className="font-mono">{formatPnL(data.avgPnL)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top Bundles */}
+              <div className="bg-white/10 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-white mb-3">バンドル</h3>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {analysisData.byBundle.slice(0, 5).map((bundle) => (
+                    <div key={bundle.bundleId} className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-green-300 text-sm truncate">{bundle.name}</span>
+                        <span className="text-gray-300 text-sm">{bundle.executionCount}件</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400 text-xs">{bundle.status}</span>
+                        <span className="font-mono text-sm">{formatPnL(bundle.totalPnL)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* VIX Positions */}
-        {vixPositions.length > 0 && (
+        {(bundledPositions.size > 0 || unbundledPositions.length > 0) && (
           <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 mb-6">
             <h2 className="text-xl font-semibold text-white mb-4">VIX Positions</h2>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/20">
+                    {!isMonitoring && (
+                      <th className="text-left py-3 px-2 text-white font-semibold">選択</th>
+                    )}
+                    <th className="text-left py-3 px-4 text-white font-semibold">Status</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Symbol</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Strike</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Type</th>
@@ -356,21 +674,150 @@ export default function PositionsPage() {
                     <th className="text-left py-3 px-4 text-white font-semibold">Unrealized</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Mark</th>
                     <th className="text-left py-3 px-4 text-white font-semibold">Value</th>
+                    <th className="text-left py-3 px-4 text-white font-semibold">Tag</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {vixPositions.map((pos) => (
-                    <tr key={`vix-${pos.contractId || pos.localSymbol}`} className="border-b border-white/10 hover:bg-white/5">
+                  {/* バンドル化されたポジション */}
+                  {Array.from(bundledPositions.entries()).map(([bundleId, bundlePositions]) => (
+                    <React.Fragment key={bundleId}>
+                      {/* バンドルヘッダー */}
+                      <tr>
+                        <td colSpan={!isMonitoring ? 13 : 12} className="py-2 px-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2 text-sm">
+                              <div className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
+                              <span className="text-purple-300 font-medium">
+                                Bundle: {bundlePositions.length} positions
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-4 text-sm">
+                              <span className="text-gray-300">Daily:</span>
+                              <span className="font-mono">{formatPnL(calculateBundlePnL(bundlePositions).totalDaily)}</span>
+                              <span className="text-gray-300">Unrealized:</span>
+                              <span className="font-mono">{formatPnL(calculateBundlePnL(bundlePositions).totalUnrealized)}</span>
+                            </div>
+                          </div>
+                          <div className="mt-1 h-px bg-gradient-to-r from-purple-500/50 to-transparent"></div>
+                        </td>
+                      </tr>
+                      {/* バンドル内のポジション */}
+                      {bundlePositions.map((pos, index) => (
+                        <tr 
+                          key={`bundle-${pos.contractId || pos.localSymbol}`} 
+                          className={`border-b border-white/10 hover:bg-white/5 relative ${
+                            index === 0 ? 'border-l-4 border-l-purple-500' : 'border-l-4 border-l-purple-500/50'
+                          }`}
+                          style={{
+                            background: index === 0 
+                              ? 'linear-gradient(90deg, rgba(147, 51, 234, 0.1) 0%, rgba(147, 51, 234, 0.05) 50%, transparent 100%)'
+                              : 'linear-gradient(90deg, rgba(147, 51, 234, 0.05) 0%, rgba(147, 51, 234, 0.02) 50%, transparent 100%)'
+                          }}
+                        >
+                          {!isMonitoring && (
+                            <td className="py-3 px-2">
+                              {pos.matched && pos.positionKey ? (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPositions.has(pos.positionKey)}
+                                  onChange={() => handlePositionSelect(pos.positionKey!)}
+                                  className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                                />
+                              ) : (
+                                <div className="w-4 h-4"></div>
+                              )}
+                            </td>
+                          )}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-1">
+                              <div className={`w-2 h-2 rounded-full ${pos.matched ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+                              <span className="text-xs text-gray-400">
+                                {pos.matched ? 'マッチ' : '未マッチ'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-white font-medium">{pos.symbol}</td>
+                          <td className="py-3 px-4 text-white">{pos.strike || '-'}</td>
+                          <td className="py-3 px-4 text-white">{pos.optionType || pos.secType}</td>
+                          <td className="py-3 px-4 text-white">{pos.expiry ? new Date(pos.expiry).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }) : '-'}</td>
+                          <td className="py-3 px-4 text-white font-mono">{pos.position}</td>
+                          <td className="py-3 px-4 text-white font-mono">${pos.avgCost.toFixed(2)}</td>
+                          <td className="py-3 px-4 font-mono">{formatPnL(pos.dailyPnL)}</td>
+                          <td className="py-3 px-4 font-mono">{formatPnL(pos.unrealizedPnL)}</td>
+                          <td className="py-3 px-4 font-mono text-white">${pos.mark?.toFixed(2) || '-'}</td>
+                          <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || pos.marketValue?.toFixed(2) || '-'}</td>
+                          <td className="py-3 px-4">
+                            {pos.tradeOrder?.tag ? (
+                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                pos.tradeOrder.tag === 'PP' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg' :
+                                pos.tradeOrder.tag === 'P+' ? 'bg-green-600 text-white' :
+                                'bg-red-600 text-white'
+                              }`}>
+                                {pos.tradeOrder.tag}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {/* バンドルの区切り */}
+                      <tr>
+                        <td colSpan={!isMonitoring ? 13 : 12} className="py-2">
+                          <div className="h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  ))}
+                  
+                  {/* バンドル化されていないポジション */}
+                  {unbundledPositions.map((pos) => (
+                    <tr key={`unbundled-${pos.contractId || pos.localSymbol}`} className="border-b border-white/10 hover:bg-white/5">
+                      {!isMonitoring && (
+                        <td className="py-3 px-2">
+                          {pos.matched && pos.positionKey ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedPositions.has(pos.positionKey)}
+                              onChange={() => handlePositionSelect(pos.positionKey!)}
+                              className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                            />
+                          ) : (
+                            <div className="w-4 h-4"></div>
+                          )}
+                        </td>
+                      )}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center space-x-1">
+                          <div className={`w-2 h-2 rounded-full ${pos.matched ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+                          <span className="text-xs text-gray-400">
+                            {pos.matched ? 'マッチ' : '未マッチ'}
+                          </span>
+                        </div>
+                      </td>
                       <td className="py-3 px-4 text-white font-medium">{pos.symbol}</td>
                       <td className="py-3 px-4 text-white">{pos.strike || '-'}</td>
                       <td className="py-3 px-4 text-white">{pos.optionType || pos.secType}</td>
-                      <td className="py-3 px-4 text-white">{pos.expiry ? pos.expiry.slice(2) : '-'}</td>
+                      <td className="py-3 px-4 text-white">{pos.expiry ? new Date(pos.expiry).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }) : '-'}</td>
                       <td className="py-3 px-4 text-white font-mono">{pos.position}</td>
                       <td className="py-3 px-4 text-white font-mono">${pos.avgCost.toFixed(2)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.dailyPnL)}</td>
                       <td className="py-3 px-4 font-mono">{formatPnL(pos.unrealizedPnL)}</td>
                       <td className="py-3 px-4 font-mono text-white">${pos.mark?.toFixed(2) || '-'}</td>
                       <td className="py-3 px-4 text-white font-mono">${pos.value?.toFixed(2) || pos.marketValue?.toFixed(2) || '-'}</td>
+                      <td className="py-3 px-4">
+                        {pos.tradeOrder?.tag ? (
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            pos.tradeOrder.tag === 'PP' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg' :
+                            pos.tradeOrder.tag === 'P+' ? 'bg-green-600 text-white' :
+                            'bg-red-600 text-white'
+                          }`}>
+                            {pos.tradeOrder.tag}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -430,6 +877,107 @@ export default function PositionsPage() {
           </div>
         )}
       </div>
+
+      {/* Bundle Modal */}
+      {showBundleModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-xl font-semibold text-white mb-4">バンドル作成</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                バンドル名
+              </label>
+              <input
+                type="text"
+                value={bundleName}
+                onChange={(e) => setBundleName(e.target.value)}
+                placeholder="例: PP20250917/20-25"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-sm text-gray-300">
+                選択済み: {selectedPositions.size}件のポジション
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                このバンドルには「PP」タグが自動で付与されます
+              </p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowBundleModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleCreateBundle}
+                disabled={!bundleName.trim()}
+                className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg"
+              >
+                作成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tag Modal */}
+      {showTagModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-xl font-semibold text-white mb-4">タグ付け</h3>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-3">
+                タグを選択
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="tag"
+                    value="P+"
+                    checked={selectedTag === 'P+'}
+                    onChange={(e) => setSelectedTag(e.target.value as 'P+' | 'P-')}
+                    className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500"
+                  />
+                  <span className="ml-2 text-white">P+ (PUT買い)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="tag"
+                    value="P-"
+                    checked={selectedTag === 'P-'}
+                    onChange={(e) => setSelectedTag(e.target.value as 'P+' | 'P-')}
+                    className="w-4 h-4 text-red-600 bg-gray-700 border-gray-600 focus:ring-red-500"
+                  />
+                  <span className="ml-2 text-white">P- (PUT売り)</span>
+                </label>
+              </div>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowTagModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleTagPosition}
+                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg"
+              >
+                タグ付け
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
-// frontend/src/types/api.ts
-import type { TradeExecution } from './trades'
-import type { PositionWithPnL } from './positions'
+// frontend/src/types/api.ts - 修正版
+
+import type { TradeOrder } from './trades'
+import type { Position } from './positions'
 
 export interface ApiResponse<T = unknown> {
   success: boolean
@@ -16,8 +17,8 @@ export interface ImportResult {
 
 export interface PositionMatchResult {
   matched: boolean
-  tradeExecution?: TradeExecution
-  position?: PositionWithPnL
+  tradeOrder?: TradeOrder
+  position?: Position
 }
 
 export interface PositionMatchingResult {

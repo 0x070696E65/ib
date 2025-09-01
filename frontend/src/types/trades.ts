@@ -1,4 +1,61 @@
 // frontend/src/types/trades.ts
+
+export interface TradeOrder {
+  _id: string
+  // 基本情報
+  accountId: string
+  symbol: string
+  secType: string
+  description?: string
+
+  // オプション詳細
+  strike?: number
+  expiry?: string
+  putCall?: 'P' | 'C'
+  multiplier?: number
+
+  // 約定詳細（集約済み）
+  orderID: number
+  tradeDate: string
+  firstExecutionTime: string
+  totalQuantity: number
+  avgPrice: number
+  totalAmount: number
+  totalProceeds: number
+  buySell: 'BUY' | 'SELL'
+  exchange?: string
+
+  // 手数料・損益（合算）
+  totalCommission: number
+  commissionCurrency?: string
+  totalNetCash: number
+  totalRealizedPnL?: number
+
+  // 約定詳細（配列）
+  execIDs: string[]
+  executionDetails: Array<{
+    execID: string
+    time: string
+    quantity: number
+    price: number
+    commission: number
+  }>
+
+  // バンドル・タグ情報
+  bundleId?: string
+  tag?: 'PP' | 'P-' | 'P+'
+
+  // ポジション状態
+  positionStatus: 'OPEN' | 'CLOSED' | 'EXPIRED'
+  closeDate?: string
+
+  // データソース
+  dataSource: 'FLEX_QUERY' | 'REAL_TIME' | 'MANUAL'
+
+  createdAt: string
+  updatedAt: string
+}
+
 export interface TradeExecution {
   _id: string
   accountId: string

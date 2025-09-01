@@ -85,10 +85,7 @@ export class TradeController {
         return
       }
 
-      const { positions } = createIbServices()
-      const currentPositions = await positions.getCurrentPositions()
-
-      const bundle = await this.aggregatedTradeService.createBundle({ name, positionKeys }, currentPositions)
+      const bundle = await this.aggregatedTradeService.createBundle({ name, positionKeys })
 
       res.json({
         success: true,
@@ -120,10 +117,7 @@ export class TradeController {
         return
       }
 
-      const { positions } = createIbServices()
-      const currentPositions = await positions.getCurrentPositions()
-
-      await this.aggregatedTradeService.tagSinglePosition(positionKey, tag, currentPositions)
+      await this.aggregatedTradeService.tagSinglePosition(positionKey, tag)
 
       res.json({
         success: true,

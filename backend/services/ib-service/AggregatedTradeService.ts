@@ -341,50 +341,53 @@ export class AggregatedTradeService {
   /**
    * ポジションの一意キーを生成
    */
-  private generatePositionKey(position: any): string {
-    return `${position.symbol}_${position.strike}_${position.expiry}_${position.optionType}`
+  private generatePositionKey(tradeOrder: any): string {
+    // symbolからVIXのみ抽出、putCallをオプションタイプに変換
+    const baseSymbol = tradeOrder.symbol.startsWith('VIX') ? 'VIX' : tradeOrder.symbol
+    const optionType = tradeOrder.putCall === 'P' ? 'PUT' : 'CALL'
+    return `${baseSymbol}_${tradeOrder.strike}_${tradeOrder.expiry}_${optionType}`
   }
 
   /**
    * バンドルを作成（PPタグ）
    */
-  async createBundle(bundleRequest: { name: string; positionKeys: string[] }, positions: any[]): Promise<any> {
-    const selectedPositions = positions.filter((pos) =>
-      bundleRequest.positionKeys.includes(this.generatePositionKey(pos))
-    )
+  async createBundle(bundleRequest: { name: string; positionKeys: string[] }): Promise<any> {
+    console.log('Received positionKeys:', bundleRequest.positionKeys)
 
-    if (selectedPositions.length < 2) {
+    // すべてのオープンなTradeOrderを取得
+    const tradeOrders = await TradeOrder.find({ positionStatus: 'OPEN' })
+    console.log('Found TradeOrders:', tradeOrders.length)
+
+    // 各TradeOrderのpositionKeyを生成してマッチング
+    const matchedOrders = tradeOrders.filter((order) => {
+      const key = this.generatePositionKey(order)
+      console.log('Generated key for order:', key, 'orderID:', order.orderID)
+      return bundleRequest.positionKeys.includes(key)
+    })
+
+    console.log('Matched orders:', matchedOrders.length)
+
+    if (matchedOrders.length < 2) {
       throw new Error('バンドルには最低2つのポジションが必要です')
     }
 
+    // バンドル情報を準備
     const orderIds: number[] = []
     let symbol = ''
-    let expiry: string | undefined = ''
+    let expiry: string = ''
 
-    for (const position of selectedPositions) {
-      const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
-
-      const order = await TradeOrder.findOne({
-        symbol: position.symbol,
-        strike: position.strike,
-        expiry: formattedExpiry,
-        putCall: position.optionType === 'PUT' ? 'P' : 'C',
-        positionStatus: 'OPEN',
-      })
-
-      if (order) {
-        orderIds.push(order.orderID)
-        symbol = order.symbol
+    for (const order of matchedOrders) {
+      orderIds.push(order.orderID)
+      symbol = order.symbol
+      if (order.expiry) {
         expiry = order.expiry
       }
     }
 
-    if (orderIds.length === 0) {
-      throw new Error('対応する発注データが見つかりません')
-    }
-
+    // バンドルIDを生成
     const bundleId = `bundle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
+    // TradeOrderにバンドル情報を更新
     await TradeOrder.updateMany({ orderID: { $in: orderIds } }, { $set: { bundleId, tag: 'PP' } })
 
     console.log(`バンドル "${bundleRequest.name}" を作成: ${orderIds.length}件の発注`)
@@ -402,32 +405,24 @@ export class AggregatedTradeService {
   /**
    * 単独ポジションにタグ付け（P+, P-）
    */
-  async tagSinglePosition(positionKey: string, tag: 'P+' | 'P-', positions: any[]): Promise<void> {
-    const position = positions.find((pos) => this.generatePositionKey(pos) === positionKey)
+  async tagSinglePosition(positionKey: string, tag: 'P+' | 'P-'): Promise<void> {
+    console.log('Received positionKey for tagging:', positionKey)
 
-    if (!position) {
+    // positionKeyから直接TradeOrderを検索
+    const tradeOrders = await TradeOrder.find({ positionStatus: 'OPEN' })
+
+    const matchedOrder = tradeOrders.find((order) => {
+      const key = this.generatePositionKey(order)
+      console.log('Generated key for tagging:', key, 'orderID:', order.orderID)
+      return key === positionKey
+    })
+
+    if (!matchedOrder) {
       throw new Error('ポジションが見つかりません')
     }
 
-    const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
+    await TradeOrder.findByIdAndUpdate(matchedOrder._id, { $set: { tag } })
 
-    const order = await TradeOrder.findOneAndUpdate(
-      {
-        symbol: position.symbol,
-        strike: position.strike,
-        expiry: formattedExpiry,
-        putCall: position.optionType === 'PUT' ? 'P' : 'C',
-        positionStatus: 'OPEN',
-      },
-      {
-        $set: { tag },
-      }
-    )
-
-    if (!order) {
-      throw new Error('対応する発注データが見つかりません')
-    }
-
-    console.log(`ポジション ${position.symbol} ${position.strike}${position.optionType} に ${tag} タグを設定`)
+    console.log(`OrderID ${matchedOrder.orderID} に ${tag} タグを設定`)
   }
 }
