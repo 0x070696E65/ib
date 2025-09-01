@@ -3,7 +3,7 @@ import { EventName } from '@stoqey/ib'
 import { IbService } from './IbService'
 import { Position } from './types'
 import EventEmitter from 'events'
-
+import { extractOptionInfo } from '../../utils/util'
 export interface PositionWithPnL extends Position {
   dailyPnL?: number
   unrealizedPnL?: number
@@ -74,9 +74,10 @@ export class RealtimePositionService extends EventEmitter {
 
     // オプション情報を抽出
     if (contract.secType === 'OPT' && contract.localSymbol) {
-      positionData.strike = this.extractStrikeFromLocalSymbol(contract.localSymbol)
-      positionData.expiry = this.extractExpiryFromLocalSymbol(contract.localSymbol)
-      positionData.optionType = this.extractOptionType(contract.localSymbol)
+      const optionInfo = extractOptionInfo(contract.localSymbol)
+      positionData.strike = optionInfo.strike
+      positionData.expiry = optionInfo.expiry
+      positionData.optionType = optionInfo.optionType
     }
 
     this.positions.set(key, positionData)
@@ -322,45 +323,5 @@ export class RealtimePositionService extends EventEmitter {
       pnlSubscriptions: this.pnlSubscriptions.size,
       marketStatus: this.marketStatus,
     }
-  }
-
-  // オプション情報抽出メソッド
-  private extractStrikeFromLocalSymbol(localSymbol: string): number | null {
-    console.log('extractStrike input:', localSymbol)
-    if (!localSymbol) return null
-    const match = localSymbol.match(/([CP])(\d{8})$/)
-    console.log('extractStrike match:', match)
-    if (match) {
-      const result = parseInt(match[2]) / 1000
-      console.log('extractStrike result:', result)
-      return result
-    }
-    return null
-  }
-
-  private extractExpiryFromLocalSymbol(localSymbol: string): string | null {
-    console.log('extractExpiry input:', localSymbol)
-    if (!localSymbol) return null
-    const match = localSymbol.match(/(\d{6})[CP]/)
-    console.log('extractExpiry match:', match)
-    if (match) {
-      const result = `20${match[1]}`
-      console.log('extractExpiry result:', result)
-      return result
-    }
-    return null
-  }
-
-  private extractOptionType(localSymbol: string): 'PUT' | 'CALL' | null {
-    console.log('extractOptionType input:', localSymbol)
-    if (!localSymbol) return null
-    const match = localSymbol.match(/([CP])\d{8}$/)
-    console.log('extractOptionType match:', match)
-    if (match) {
-      const result = match[1] === 'P' ? 'PUT' : 'CALL'
-      console.log('extractOptionType result:', result)
-      return result
-    }
-    return null
   }
 }

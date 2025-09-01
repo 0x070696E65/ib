@@ -1,7 +1,7 @@
 // backend/services/AggregatedTradeService.ts
-import { TradeOrder, ITradeOrder } from '../../models/TradeOrder'
+import { TradeOrder } from '../../models/TradeOrder'
 import { FlexExecution, createFlexQueryService } from './FlexQueryService'
-
+import { extractOptionInfo } from '../../utils/util'
 interface AggregatedExecution {
   orderID: number
   executions: FlexExecution[]
@@ -280,19 +280,16 @@ export class AggregatedTradeService {
     const results = []
 
     for (const position of positions) {
-      if (position.secType !== 'OPT' || !position.strike || !position.expiry) {
+      const optionInfo = extractOptionInfo(position.localSymbol)
+      if (position.secType !== 'OPT' || !optionInfo.strike || !optionInfo.expiry) {
         results.push({ matched: false, position })
         continue
       }
 
-      // expiry フォーマット変換: "250917" → "20250917"
-      const formattedExpiry = this.convertExpiryToFullFormat(position.expiry)
-
       const matchingOrder = await TradeOrder.findOne({
-        symbol: position.symbol,
-        strike: position.strike,
-        expiry: formattedExpiry,
-        putCall: position.optionType === 'PUT' ? 'P' : 'C',
+        strike: optionInfo.strike,
+        expiry: optionInfo.expiry,
+        putCall: 'P',
         positionStatus: 'OPEN',
       })
 

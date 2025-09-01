@@ -25,18 +25,6 @@ async function testAPIIntegration() {
       return
     }
 
-    // 1. データインポートテスト
-    console.log('\n📥 Flex Query データインポートテスト...')
-    try {
-      const importResponse = await axios.post(`${API_BASE}/import-flex-data`)
-      console.log('✅ インポート成功:', importResponse.data.message)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      const errorData = (error as any).response?.data
-      console.error('❌ インポートエラー:', errorData || errorMessage)
-      console.log('💡 環境変数 IB_FLEX_TOKEN, IB_FLEX_QUERY_ID を確認してください')
-    }
-
     // データベース内容確認
     const orderCount = await TradeOrder.countDocuments()
     console.log(`📊 データベース内の発注数: ${orderCount}件`)
@@ -59,22 +47,10 @@ async function testAPIIntegration() {
 
       // マッチング結果の詳細表示
       if (matchData.results.length > 0) {
-        console.log('現在のポジション詳細:')
-        matchData.results.slice(0, 3).forEach((result: any, index: number) => {
-          const pos = result.position
-          console.log(`${index + 1}:`)
-          console.log(`  symbol: ${pos.symbol}`)
-          console.log(`  localSymbol: ${pos.localSymbol}`)
-          console.log(`  strike: ${pos.strike}`)
-          console.log(`  expiry: ${pos.expiry}`)
-          console.log(`  optionType: ${pos.optionType}`)
-          console.log(`  secType: ${pos.secType}`)
-        })
-
         console.log('\n--- マッチング詳細 (最初の5件) ---')
         matchData.results.slice(0, 5).forEach((result: any, index: number) => {
-          const pos = result.position
-          console.log(`${index + 1}. ${pos.symbol} ${pos.strike}${pos.optionType} ${pos.expiry}`)
+          const tradeOrder = result.tradeOrder
+          console.log(`${index + 1}. ${tradeOrder.expiry} ${tradeOrder.strike} ${tradeOrder.putCall}`)
           console.log(`   マッチング: ${result.matched ? '✅' : '❌'}`)
           if (result.matched && result.tradeOrder) {
             console.log(`   発注ID: ${result.tradeOrder.orderID}`)
