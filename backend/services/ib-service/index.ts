@@ -1,12 +1,10 @@
 // services/ib-service/index.ts
 import { IbService } from './IbService'
 import { HistoricalDataService } from './HistoricalDataService'
-import { PositionService } from './PositionService'
 import { ContractService } from './ContractService'
 
 export { IbService } from './IbService'
 export { HistoricalDataService } from './HistoricalDataService'
-export { PositionService } from './PositionService'
 export { ContractService } from './ContractService'
 export * from './types'
 
@@ -16,7 +14,6 @@ export function createIbServices() {
   return {
     ib: ibService,
     historical: new HistoricalDataService(ibService),
-    positions: new PositionService(ibService),
     contracts: new ContractService(ibService),
   }
 }
@@ -27,7 +24,6 @@ export function createIbServiceWithConfig(port = 4001, host = '127.0.0.1', clien
   return {
     ib: ibService,
     historical: new HistoricalDataService(ibService),
-    positions: new PositionService(ibService),
     contracts: new ContractService(ibService),
   }
 }

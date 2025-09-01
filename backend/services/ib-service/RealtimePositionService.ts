@@ -188,15 +188,14 @@ export class RealtimePositionService extends EventEmitter {
       await this.ibService.connect()
       this.isMonitoring = true
 
+      // 初回ポジション取得のみ
       await this.refreshPositions()
 
-      // 定期更新（30秒間隔）
-      this.monitoringInterval = setInterval(async () => {
-        await this.refreshPositions()
-      }, 30000)
+      // 定期更新は削除 - onPnLSingleが自動でリアルタイム更新する
+      // this.monitoringInterval = setInterval(...) // 削除
 
       this.emit('monitoringStarted')
-      console.log('リアルタイム監視を開始しました')
+      console.log('リアルタイム監視を開始しました（PnL自動更新モード）')
     } catch (error) {
       this.emit('error', error)
       throw error
