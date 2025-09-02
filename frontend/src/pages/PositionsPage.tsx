@@ -160,7 +160,6 @@ export default function PositionsPage() {
 
     monitor.on('accountPnl', (data: unknown) => {
       const pnlData = data as AccountPnL
-      console.log('Account PnL updated:', pnlData)
       setAccountPnL(pnlData)
       setLastUpdate(new Date().toLocaleTimeString())
     })

@@ -19,8 +19,8 @@ export class AggregatedTradeService {
     const flexService = createFlexQueryService(process.env.IB_FLEX_TOKEN!, process.env.IB_FLEX_QUERY_ID!)
 
     try {
-      // 過去1年のデータを取得
-      const flexExecutions = await flexService.getExecutionHistory(365)
+      // 過去1ヶ月のデータを取得
+      const flexExecutions = await flexService.getExecutionHistory(30)
       console.log(`${flexExecutions.length}件の約定を取得`)
 
       // orderID単位でグループ化

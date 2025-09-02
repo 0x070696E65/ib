@@ -517,19 +517,29 @@ export default function OptionMatrixPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {profitMatrix.vixPrices.slice().reverse().map((vixPrice, vixIndex) => (
-                      <tr key={vixPrice} className="border-b border-white/10 hover:bg-white/5">
-                        <td className="py-2 px-2 text-white font-medium">{vixPrice}</td>
-                        {profitMatrix.matrix[vixIndex].map((profit, posIndex) => (
-                          <td key={posIndex} className="py-2 px-2 text-center font-mono text-xs">
-                            {formatProfit(profit)}
+                    {profitMatrix.vixPrices
+                      .map((vixPrice, vixIndex) => ({
+                        vixPrice,
+                        row: profitMatrix.matrix[vixIndex],
+                        total: profitMatrix.totalProfits[vixIndex],
+                      }))
+                      .sort((a, b) => b.vixPrice - a.vixPrice) // 降順ソート
+                      .map(({ vixPrice, row, total }) => (
+                        <tr key={vixPrice} className="border-b border-white/10 hover:bg-white/5">
+                          <td className="py-2 px-2 text-white font-medium">{vixPrice}</td>
+                          {row.map((profit, posIndex) => (
+                            <td
+                              key={posIndex}
+                              className="py-2 px-2 text-center font-mono text-xs"
+                            >
+                              {formatProfit(profit)}
+                            </td>
+                          ))}
+                          <td className="py-2 px-2 text-center font-mono text-sm font-semibold bg-white/5">
+                            {formatProfit(total)}
                           </td>
-                        ))}
-                        <td className="py-2 px-2 text-center font-mono text-sm font-semibold bg-white/5">
-                          {formatProfit(profitMatrix.totalProfits[vixIndex])}
-                        </td>
-                      </tr>
-                    ))}
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
