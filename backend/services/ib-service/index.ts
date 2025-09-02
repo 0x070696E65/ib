@@ -3,11 +3,14 @@ import { IbService } from './IbService'
 import { HistoricalDataService } from './HistoricalDataService'
 import { ContractService } from './ContractService'
 import { PositionService } from './PositionService'
+import { OptionPriceService } from './OptionPriceService'
 
 export { IbService } from './IbService'
 export { HistoricalDataService } from './HistoricalDataService'
 export { PositionService } from './PositionService'
 export { ContractService } from './ContractService'
+export { OptionPriceService } from './OptionPriceService'
+
 export * from './types'
 
 // 便利なファクトリー関数
@@ -18,6 +21,7 @@ export function createIbServices() {
     historical: new HistoricalDataService(ibService),
     positions: new PositionService(ibService),
     contracts: new ContractService(ibService),
+    optionPrice: new OptionPriceService(ibService),
   }
 }
 

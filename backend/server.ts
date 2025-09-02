@@ -8,6 +8,7 @@ import vixExpirationsRoutes from './routes/vixExpirations'
 import vixFutureRoutes from './routes/vixFuture'
 import positionRoutes from './routes/positions'
 import tradeRoutes from './routes/trades'
+import optionRoutes from './routes/options'
 
 // データベース接続
 import { connectToDatabase } from './database/connection'
@@ -39,6 +40,7 @@ app.use('/api/vix-expirations', vixExpirationsRoutes)
 app.use('/api/vix-future', vixFutureRoutes)
 app.use('/api/vix-option', vixOptionRoutes)
 app.use('/api/trades', tradeRoutes)
+app.use('/api/options', optionRoutes)
 
 // 静的ファイル配信（本番環境用）
 if (process.env.NODE_ENV === 'production') {

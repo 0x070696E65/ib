@@ -1,16 +1,17 @@
-// frontend/src/App.tsx
+// frontend/src/App.tsx - 元の構造を維持した修正版
 import { useState } from 'react'
 import HistoricalDataPage from './pages/HistoricalDataPage'
 import PositionsPage from './pages/PositionsPage'
+import OptionMatrixPage from './pages/OptionMatrixPage'
 
-type PageType = 'historical' | 'positions'
+type PageType = 'historical' | 'positions' | 'options'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<PageType>('historical')
+  const [currentPage, setCurrentPage] = useState<PageType>('positions')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Navigation */}
+      {/* Navigation - 元の構造を維持 */}
       <nav className="relative z-50 bg-black/20 backdrop-blur-sm border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -44,15 +45,26 @@ function App() {
               >
                 Live Positions
               </button>
+              <button
+                onClick={() => setCurrentPage('options')}
+                className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                  currentPage === 'options'
+                    ? 'bg-white text-gray-900 shadow-lg'
+                    : 'text-white/70 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                Option Matrix
+              </button>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Page Content */}
+      {/* Page Content - 元のmain構造を維持 */}
       <main>
         {currentPage === 'historical' && <HistoricalDataPage />}
         {currentPage === 'positions' && <PositionsPage />}
+        {currentPage === 'options' && <OptionMatrixPage />}
       </main>
     </div>
   )
