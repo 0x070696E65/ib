@@ -117,9 +117,6 @@ export class OptionPriceService {
     if (optPrice.bid > 0 && optPrice.ask > 0) {
       if (!request.resolved) {
         request.resolved = true
-        console.log(
-          `オプション価格取得完了: ${optPrice.expiration} ${optPrice.strike}P - Bid:${optPrice.bid} Ask:${optPrice.ask} Mid:${optPrice.midPrice}`
-        )
         request.resolve(optPrice)
         this.ibService.removePendingRequest(reqId)
       }
@@ -183,7 +180,6 @@ export class OptionPriceService {
         multiplier: 100,
       }
 
-      console.log(`オプション価格取得リクエスト: ${expiration} ${strike}P (ReqID: ${reqId})`)
       this.ibService.getIbApi().reqMktData(reqId, contract, '', false, false)
     })
   }

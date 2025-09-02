@@ -4,12 +4,14 @@ import { HistoricalDataService } from './HistoricalDataService'
 import { ContractService } from './ContractService'
 import { PositionService } from './PositionService'
 import { OptionPriceService } from './OptionPriceService'
+import { FuturePriceService } from './FuturePriceService'
 
 export { IbService } from './IbService'
 export { HistoricalDataService } from './HistoricalDataService'
 export { PositionService } from './PositionService'
 export { ContractService } from './ContractService'
 export { OptionPriceService } from './OptionPriceService'
+export { FuturePriceService } from './FuturePriceService'
 
 export * from './types'
 
@@ -22,6 +24,7 @@ export function createIbServices() {
     positions: new PositionService(ibService),
     contracts: new ContractService(ibService),
     optionPrice: new OptionPriceService(ibService),
+    futurePrice: new FuturePriceService(ibService),
   }
 }
 

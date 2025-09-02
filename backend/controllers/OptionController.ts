@@ -48,8 +48,6 @@ export class OptionController {
         return
       }
 
-      console.log(`オプション価格取得リクエスト: ${expiration}, ${strikeMin}-${strikeMax}`)
-
       const { optionPrice } = createIbServices()
       const request: OptionPriceRequest = {
         expiration,

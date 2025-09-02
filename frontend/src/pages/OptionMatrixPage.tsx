@@ -1,4 +1,4 @@
-// frontend/src/pages/OptionMatrixPage.tsx - マルチ限月・マルチポジション対応版
+// frontend/src/pages/OptionMatrixPage.tsx
 import { useState, useEffect } from 'react'
 import {
   fetchAvailableExpirations,
@@ -7,6 +7,8 @@ import {
   type CalculateRequest
 } from '../api/optionService'
 import type { Expiration, OptionPrice } from '../types/options'
+import StrategyRecommendations from '../components/StrategyRecommendations'
+import type { StrategyPair } from '../utils/strategyCalculations'
 
 interface SelectedPosition {
   id: string // expiration_strike で一意識別
@@ -236,6 +238,28 @@ export default function OptionMatrixPage() {
     }
   }
 
+  const handleStrategySelect = (strategy: StrategyPair) => {
+    const newPositions: SelectedPosition[] = [
+      {
+        id: `${strategy.expiration}_${strategy.sellStrike}`,
+        expiration: strategy.expiration,
+        strike: strategy.sellStrike,
+        price: strategy.sellPrice,
+        quantity: -strategy.quantity // 売り（ヘッジ）なので負数
+      },
+      {
+        id: `${strategy.expiration}_${strategy.buyStrike}`,
+        expiration: strategy.expiration,
+        strike: strategy.buyStrike,
+        price: strategy.buyPrice,
+        quantity: strategy.quantity // 買い（メイン）なので正数
+      }
+    ]
+    
+    setSelectedPositions(newPositions)
+    console.log(`VIX下落戦略適用: SELL ${strategy.sellStrike}P (ヘッジ) / BUY ${strategy.buyStrike}P (メイン利益)`)
+  }
+
   // 損益計算を選択ポジション変更時に自動実行
   useEffect(() => {
     if (selectedPositions.length > 0) {
@@ -370,6 +394,12 @@ export default function OptionMatrixPage() {
             </div>
           )}
         </div>
+
+        {/* Strategy Recommendations */}
+        <StrategyRecommendations 
+          multiData={multiData}
+          onStrategySelect={handleStrategySelect}
+        />
 
         {/* Price Matrix */}
         {multiData && (
