@@ -343,11 +343,21 @@ export default function OptionMatrixPage() {
 
         <CacheStatus 
           onLoadFromCache={(data: CacheData) => {
-            setMultiData({
-              expirations: data.expirations,
-              results: data.optionPrices
-            })
-          }}
+          const expirations = data.expirations || Object.keys(data.optionPrices || {})
+
+          if (!Array.isArray(expirations) || expirations.length === 0) {
+            console.error('No valid expirations found')
+            setError('キャッシュデータが不正です')
+            return
+          }
+          
+          const newMultiData = {
+            expirations: expirations,
+            results: data.optionPrices || {}
+          }
+          
+          setMultiData(newMultiData)
+        }}
           onClearCache={() => {
             setMultiData(null)
           }}
@@ -459,7 +469,7 @@ export default function OptionMatrixPage() {
                 <thead>
                   <tr className="border-b border-white/20">
                     <th className="text-left py-3 px-2 text-white font-semibold">Strike</th>
-                    {multiData.expirations.map((exp) => (
+                    {multiData?.expirations?.map((exp) => (
                       <th key={exp} className="text-center py-3 px-2 text-white font-semibold whitespace-nowrap">
                         {formatExpiration(exp)}
                       </th>
@@ -470,7 +480,7 @@ export default function OptionMatrixPage() {
                   {strikes.map((strike) => (
                     <tr key={strike} className="border-b border-white/10">
                       <td className="py-2 px-2 text-white font-medium">{strike}</td>
-                      {multiData.expirations.map((exp) => {
+                      {multiData?.expirations?.map((exp) => {
                         const prices = multiData.results[exp] || []
                         const priceData = prices.find(p => p.strike === strike)
                         const isSelected = isPositionSelected(exp, strike)

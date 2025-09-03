@@ -15,7 +15,6 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
 }) => {
   const [strategies, setStrategies] = useState<StrategyPair[]>([])
   const [analyzingStrategies, setAnalyzingStrategies] = useState(false)
-  const [debugInfo, setDebugInfo] = useState<string>('')
 
   useEffect(() => {
     if (multiData) {
@@ -27,7 +26,6 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
     if (!multiData) return
 
     setAnalyzingStrategies(true)
-    setDebugInfo('')
     
     try {
       let debug = 'Debug Info:\n'
@@ -72,13 +70,11 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
         })
       }
       
-      setDebugInfo(debug)
       setStrategies(pairs.slice(0, 5))
       console.log('戦略分析完了:', debug)
       
     } catch (err) {
       console.error('Strategy analysis error:', err)
-      setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setAnalyzingStrategies(false)
     }
@@ -102,15 +98,6 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
           {analyzingStrategies ? 'Analyzing...' : 'Re-analyze'}
         </button>
       </div>
-
-      {debugInfo && (
-        <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
-          <details>
-            <summary className="text-yellow-400 text-sm cursor-pointer mb-2">Debug Information (Click to expand)</summary>
-            <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{debugInfo}</pre>
-          </details>
-        </div>
-      )}
 
       {analyzingStrategies ? (
         <div className="text-center py-8">

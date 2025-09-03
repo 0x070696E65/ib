@@ -188,13 +188,6 @@ const calculateStrategyMetrics = (
     quarterlyReturn * 0.3 + // 四半期リターン（30%に減少）
     optimalTimingBonus * 0.5 // 最適タイミングボーナス（50%に増加）
 
-  console.log(
-    `DEBUG: Days=${daysToExpiration}, OptimalBonus=${optimalTimingBonus.toFixed(
-      3
-    )}, QuarterlyReturn=${quarterlyReturn.toFixed(3)}, AnnualReturn=${annualizedReturn.toFixed(
-      3
-    )}, TimeScore=${timeAdjustedScore.toFixed(3)}`
-  )
   return {
     maxProfit,
     maxLoss,
