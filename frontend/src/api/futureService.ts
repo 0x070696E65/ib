@@ -23,13 +23,13 @@ export interface FuturePricesResponse {
   message: string
 }
 
-const API_BASE = 'http://localhost:3001/api'
+const BASE_URL = import.meta.env.VITE_API_URL
 
 /**
  * 複数満期のVIX先物価格を取得
  */
 export const fetchFuturePrices = async (request: FuturePricesRequest): Promise<Record<string, FuturePrice>> => {
-  const response = await fetch(`${API_BASE}/futures/prices`, {
+  const response = await fetch(`${BASE_URL}/futures/prices`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ export const fetchFuturePrices = async (request: FuturePricesRequest): Promise<R
  * 単一満期のVIX先物価格を取得
  */
 export const fetchSingleFuturePrice = async (expiration: string): Promise<FuturePrice> => {
-  const response = await fetch(`${API_BASE}/futures/price/${expiration}`)
+  const response = await fetch(`${BASE_URL}/futures/price/${expiration}`)
 
   if (!response.ok) {
     throw new Error(`VIX先物価格取得失敗: ${response.status} ${response.statusText}`)

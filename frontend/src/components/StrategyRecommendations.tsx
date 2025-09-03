@@ -50,7 +50,6 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
         debug += `${exp}: ${prices.length} options, future=${future?.midPrice?.toFixed(2) || 'N/A'}\n`
         
         if (prices.length > 0 && future) {
-          // 先物価格近辺のオプション価格をチェック
           const nearFuture = prices.filter(p => Math.abs(p.strike - future.midPrice) <= 2)
           debug += `  Near-future options (±2): ${nearFuture.length} found\n`
           nearFuture.slice(0, 3).forEach(p => {
@@ -59,7 +58,7 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
         }
       })
       
-      // 3. 戦略生成
+      // 3. 戦略生成（2つの引数で呼び出し）
       debug += '\n=== Strategy Generation ===\n'
       await new Promise(resolve => setTimeout(resolve, 500))
       const pairs = generateOptionPairs(multiData, futures)
@@ -69,7 +68,7 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
         debug += `Top 3 strategies:\n`
         pairs.slice(0, 3).forEach((pair, i) => {
           debug += `  ${i+1}. ${pair.expiration} SELL ${pair.sellStrike}P(${pair.sellPrice.toFixed(2)}) / BUY ${pair.buyStrike}P(${pair.buyPrice.toFixed(2)})\n`
-          debug += `     Future: ${pair.futurePrice.toFixed(2)}, Debit: ${pair.netDebit.toFixed(2)}, Max Profit: ${pair.metrics.maxProfit.toFixed(0)}, Score: ${pair.metrics.riskAdjustedReturn.toFixed(3)}\n`
+          debug += `     Future: ${pair.futurePrice.toFixed(2)}, Debit: ${pair.netDebit.toFixed(2)}, Days: ${pair.daysToExpiration}, Score: ${pair.metrics.timeAdjustedScore.toFixed(3)}\n`
         })
       }
       
@@ -94,7 +93,7 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
   return (
     <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 mb-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-white">VIX Decline Strategy Recommendations</h2>
+        <h2 className="text-xl font-semibold text-white">4-Month Rolling VIX Strategy</h2>
         <button
           onClick={analyzeStrategies}
           disabled={analyzingStrategies}
@@ -104,7 +103,6 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
         </button>
       </div>
 
-      {/* Debug Information Panel */}
       {debugInfo && (
         <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
           <details>
@@ -130,7 +128,7 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
                 <div className="flex justify-between items-start mb-3">
                   <div className="text-sm text-gray-300">Strategy #{index + 1}</div>
                   <div className="text-xs bg-green-600/30 px-2 py-1 rounded text-green-300">
-                    Score: {strategy.metrics.riskAdjustedReturn.toFixed(2)}
+                    Score: {strategy.metrics.timeAdjustedScore.toFixed(3)}
                   </div>
                 </div>
 
@@ -154,6 +152,22 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
                   </div>
                 </div>
 
+                {/* Time & Efficiency Metrics */}
+                <div className="bg-blue-600/20 rounded p-2 mb-3 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-blue-300">Days to Exp:</span>
+                    <span className="text-white font-mono">{strategy.daysToExpiration}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-300">Quarterly Return:</span>
+                    <span className="text-blue-200 font-mono">{(strategy.metrics.quarterlyReturn * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-300">Annual Return:</span>
+                    <span className="text-blue-200 font-mono">{(strategy.metrics.annualizedReturn * 100).toFixed(1)}%</span>
+                  </div>
+                </div>
+
                 {/* Metrics */}
                 <div className="space-y-2 text-xs mb-4">
                   <div className="flex justify-between">
@@ -167,6 +181,10 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
                   <div className="flex justify-between">
                     <span className="text-gray-300">Max Loss:</span>
                     <span className="text-red-400 font-mono">-${strategy.metrics.maxLoss.toFixed(0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Capital Eff:</span>
+                    <span className="text-yellow-400 font-mono">{(strategy.metrics.capitalEfficiency * 100).toFixed(1)}%</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-300">Win Rate:</span>
@@ -190,11 +208,12 @@ const StrategyRecommendations: React.FC<StrategyRecommendationsProps> = ({
 
           <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <div className="text-blue-300 text-sm">
-              <div className="font-medium mb-1">VIX Decline Strategy:</div>
+              <div className="font-medium mb-1">4-Month Rolling VIX Decline Strategy:</div>
               <div className="text-xs space-y-1">
                 <p>• SELL PUT near future price (hedge), BUY PUT higher strike (main profit)</p>
-                <p>• Profits when VIX declines below break-even point at expiration</p>
-                <p>• Max profit achieved when VIX falls significantly below sell strike</p>
+                <p>• Optimized for 90-120 day expirations with quarterly rolling schedule</p>
+                <p>• Scores prioritize: Quarterly Return (40%) + Risk-Adjusted Return (30%) + Optimal Timing (30%)</p>
+                <p>• Max profit when VIX falls significantly below sell strike at expiration</p>
               </div>
             </div>
           </div>

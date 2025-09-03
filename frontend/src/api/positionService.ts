@@ -1,5 +1,5 @@
 // frontend/src/api/positionService.ts
-const BASE_URL = 'http://macbook-pro.local:3001/api'
+const BASE_URL = import.meta.env.VITE_API_URL
 
 export interface Position {
   account: string

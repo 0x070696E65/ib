@@ -8,8 +8,11 @@ import {
 } from '../api/optionService'
 import type { Expiration, OptionPrice } from '../types/options'
 import StrategyRecommendations from '../components/StrategyRecommendations'
+import CacheStatus from '../components/CacheStatus'
 import type { StrategyPair } from '../utils/strategyCalculations'
-
+import type { CacheData } from '../api/cacheService'
+import { savePriceDataToCache } from '../api/cacheService'
+import { fetchFuturePrices } from "../api/futureService"
 interface SelectedPosition {
   id: string // expiration_strike で一意識別
   expiration: string
@@ -30,7 +33,7 @@ export default function OptionMatrixPage() {
   const [strikeMin, setStrikeMin] = useState(15)
   const [strikeMax, setStrikeMax] = useState(30)
   const [stepSize, setStepSize] = useState(1)
-  
+
   // マルチ限月データ
   const [multiData, setMultiData] = useState<{
     expirations: string[]
@@ -59,7 +62,7 @@ export default function OptionMatrixPage() {
     }
   }
 
-    const handleFetchAllPrices = async () => {
+  const handleFetchAllPrices = async () => {
     if (expirations.length === 0) {
       setError('満期日データがありません')
       return
@@ -75,6 +78,7 @@ export default function OptionMatrixPage() {
       return
     }
 
+    const startTime = Date.now()
     setLoading(true)
     setError(null)
     setMultiData(null)
@@ -121,7 +125,27 @@ export default function OptionMatrixPage() {
       
       const totalPrices = Object.values(allResults).reduce((sum, prices) => sum + prices.length, 0)
       console.log(`全限月価格取得完了: ${totalPrices}件`)
-      
+
+      // キャッシュに保存（エラーが出ても処理は継続）
+      try {
+        // 先物価格も取得する必要があります
+        const futures = await fetchFuturePrices({ expirations: allExpirations })
+        
+        const fetchDuration = (Date.now() - startTime) / 1000
+        await savePriceDataToCache({
+          expirations: allExpirations,
+          strikeMin,
+          strikeMax,
+          stepSize,
+          optionPrices: allResults,
+          futurePrices: futures,
+          strategies: [], // 空配列でOK
+          fetchDuration
+        })
+        console.log('データをキャッシュに保存しました')
+      } catch (cacheError) {
+        console.error('キャッシュ保存エラー（処理は継続）:', cacheError)
+      }
     } catch (err) {
       setError('価格取得に失敗しました')
       console.error('Multi price fetch error:', err)
@@ -316,6 +340,18 @@ export default function OptionMatrixPage() {
           </h1>
           <p className="text-gray-400 text-lg">Advanced multi-position profit analysis</p>
         </div>
+
+        <CacheStatus 
+          onLoadFromCache={(data: CacheData) => {
+            setMultiData({
+              expirations: data.expirations,
+              results: data.optionPrices
+            })
+          }}
+          onClearCache={() => {
+            setMultiData(null)
+          }}
+        />
 
         {/* Control Panel */}
         <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6 mb-6">

@@ -3,12 +3,11 @@
 import type { BundleCreateRequest, TagPositionRequest, PositionMatchingResult } from '../types/api'
 import type { TradeOrder, AnalysisData } from '../types/trades'
 
-const BASE_URL = 'http://macbook-pro.local:3001/api'
-const API_BASE = `${BASE_URL}/trades`
+const BASE_URL = `${import.meta.env.VITE_API_URL}/trades`
 
 // Flex Query データをインポート
 export async function importFlexData(): Promise<{ imported: number; skipped: number }> {
-  const response = await fetch(`${API_BASE}/import-flex-data`, {
+  const response = await fetch(`${BASE_URL}/import-flex-data`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -25,7 +24,7 @@ export async function importFlexData(): Promise<{ imported: number; skipped: num
 
 // ポジションマッチング結果を取得
 export async function fetchPositionMatching(): Promise<PositionMatchingResult> {
-  const response = await fetch(`${API_BASE}/position-matching`)
+  const response = await fetch(`${BASE_URL}/position-matching`)
 
   if (!response.ok) {
     throw new Error(`Position matching failed: ${response.statusText}`)
@@ -37,7 +36,7 @@ export async function fetchPositionMatching(): Promise<PositionMatchingResult> {
 
 // バンドルを作成
 export async function createBundle(request: BundleCreateRequest): Promise<{ bundleId: string }> {
-  const response = await fetch(`${API_BASE}/bundles`, {
+  const response = await fetch(`${BASE_URL}/bundles`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -55,7 +54,7 @@ export async function createBundle(request: BundleCreateRequest): Promise<{ bund
 
 // 単独ポジションにタグ付け
 export async function tagPosition(request: TagPositionRequest): Promise<void> {
-  const response = await fetch(`${API_BASE}/tag-position`, {
+  const response = await fetch(`${BASE_URL}/tag-position`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -70,7 +69,7 @@ export async function tagPosition(request: TagPositionRequest): Promise<void> {
 
 // 分析データを取得
 export async function fetchAnalysisData(): Promise<AnalysisData> {
-  const response = await fetch(`${API_BASE}/analysis`)
+  const response = await fetch(`${BASE_URL}/analysis`)
 
   if (!response.ok) {
     throw new Error(`Analysis data fetch failed: ${response.statusText}`)
@@ -98,7 +97,7 @@ export async function fetchTradeHistory(filters?: {
     })
   }
 
-  const url = `${API_BASE}/history${params.toString() ? `?${params.toString()}` : ''}`
+  const url = `${BASE_URL}/history${params.toString() ? `?${params.toString()}` : ''}`
   const response = await fetch(url)
 
   if (!response.ok) {
