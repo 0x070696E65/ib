@@ -1,4 +1,4 @@
-// services/ib-service/HistoricalDataService.ts
+// services/HistoricalDataService.ts
 import { EventName, SecType, OptionType, BarSizeSetting, WhatToShow, Contract } from '@stoqey/ib'
 import { DateTime } from 'luxon'
 import { IbService } from './IbService'

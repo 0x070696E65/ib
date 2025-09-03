@@ -1,9 +1,9 @@
-// services/ib-service/RealtimePositionService.ts
+// services/RealtimePositionService.ts
 import { EventName } from '@stoqey/ib'
 import { IbService } from './IbService'
 import { Position } from './types'
 import EventEmitter from 'events'
-import { extractOptionInfo } from '../../utils/util'
+import { extractOptionInfo } from '../utils/util'
 export interface PositionWithPnL extends Position {
   dailyPnL?: number
   unrealizedPnL?: number

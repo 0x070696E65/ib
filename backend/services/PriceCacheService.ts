@@ -1,5 +1,5 @@
 // backend/services/PriceCacheService.ts
-import { PriceDataCache } from '../../models/PriceDataCache'
+import { PriceDataCache } from '../models/PriceDataCache'
 
 export interface CacheRequest {
   expirations: string[]

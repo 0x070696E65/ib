@@ -1,4 +1,4 @@
-// services/ib-service/IbService.ts
+// services/IbService.ts
 import { IBApi, EventName } from '@stoqey/ib'
 import { ConnectionInfo, PendingRequestsStatus } from './types'
 

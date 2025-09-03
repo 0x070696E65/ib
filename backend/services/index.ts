@@ -1,4 +1,4 @@
-// services/ib-service/index.ts
+// services/index.ts
 import { IbService } from './IbService'
 import { HistoricalDataService } from './HistoricalDataService'
 import { ContractService } from './ContractService'

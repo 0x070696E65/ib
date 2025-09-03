@@ -1,4 +1,4 @@
-// services/ib-service/ContractService.ts
+// services/ContractService.ts
 import { EventName, SecType, Contract } from '@stoqey/ib'
 import { IbService } from './IbService'
 

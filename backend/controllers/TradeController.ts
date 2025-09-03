@@ -1,7 +1,7 @@
 // backend/controllers/TradeController.ts
 import { Request, Response } from 'express'
-import { AggregatedTradeService } from '../services/ib-service/AggregatedTradeService'
-import { createIbServices } from '../services/ib-service'
+import { AggregatedTradeService } from '../services/AggregatedTradeService'
+import { createIbServices } from '../services'
 import { TradeOrder } from '../models/TradeOrder'
 
 export class TradeController {

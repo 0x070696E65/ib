@@ -1,6 +1,6 @@
 // services/VixDataService.ts (オプション＋先物対応版)
-import { createIbServices } from './ib-service'
-import { OptionClosePrice, FutureClosePrice } from './ib-service/types'
+import { createIbServices } from '.'
+import { OptionClosePrice, FutureClosePrice } from './types'
 import { OptionClosePriceModel } from '../models/OptionClosePrice'
 import { FutureClosePriceModel } from '../models/FutureClosePrice'
 import { ExpirationService } from './ExpirationService'

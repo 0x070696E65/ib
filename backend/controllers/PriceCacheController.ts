@@ -1,6 +1,6 @@
 // backend/controllers/PriceCacheController.ts
 import { Request, Response } from 'express'
-import { PriceCacheService } from '../services/ib-service/PriceCacheService'
+import { PriceCacheService } from '../services/PriceCacheService'
 
 export class PriceCacheController {
   private cacheService: PriceCacheService

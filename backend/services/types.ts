@@ -1,4 +1,4 @@
-// services/ib-service/types.ts
+// services/types.ts
 export interface OptionClosePrice {
   contract: string
   strike: number

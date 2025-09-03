@@ -1,7 +1,7 @@
 // backend/controllers/OptionController.ts
 import { Request, Response } from 'express'
-import { createIbServices } from '../services/ib-service'
-import { OptionPrice, OptionPriceRequest } from '../services/ib-service/OptionPriceService'
+import { createIbServices } from '../services'
+import { OptionPrice, OptionPriceRequest } from '../services/OptionPriceService'
 import { VixExpirationModel } from '../models/VixExpiration'
 
 export interface ProfitCalculation {

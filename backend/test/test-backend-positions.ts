@@ -1,6 +1,6 @@
 // test-backend-positions.ts - バックエンド単体テスト
-import { RealtimePositionService } from '../services/ib-service/RealtimePositionService'
-import { createIbServices } from '../services/ib-service'
+import { RealtimePositionService } from '../services/RealtimePositionService'
+import { createIbServices } from '../services'
 
 async function testRealtimePositionService() {
   console.log('=== リアルタイムポジションサービステスト開始 ===\n')

@@ -1,4 +1,4 @@
-// backend/services/ib-service/OptionPriceService.ts
+// backend/services/OptionPriceService.ts
 import { EventName, SecType, Contract, OptionType } from '@stoqey/ib'
 import { IbService } from './IbService'
 

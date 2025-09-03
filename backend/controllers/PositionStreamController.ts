@@ -1,7 +1,7 @@
 // controllers/PositionStreamController.ts
 import { Request, Response } from 'express'
-import { RealtimePositionService, PositionWithPnL } from '../services/ib-service/RealtimePositionService'
-import { createIbServices } from '../services/ib-service'
+import { RealtimePositionService, PositionWithPnL } from '../services/RealtimePositionService'
+import { createIbServices } from '../services'
 
 export class PositionStreamController {
   private realtimeService: RealtimePositionService

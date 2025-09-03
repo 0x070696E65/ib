@@ -1,5 +1,5 @@
 // backend/test/test-aggregated-import.ts
-import { AggregatedTradeService } from '../services/ib-service/AggregatedTradeService'
+import { AggregatedTradeService } from '../services/AggregatedTradeService'
 import { connectToDatabase } from '../database/connection'
 import { TradeOrder } from '../models/TradeOrder'
 import * as dotenv from 'dotenv'

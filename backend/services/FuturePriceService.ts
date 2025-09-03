@@ -1,4 +1,4 @@
-// backend/services/ib-service/FuturePriceService.ts
+// backend/services/FuturePriceService.ts
 import { EventName, SecType, Contract } from '@stoqey/ib'
 import { IbService } from './IbService'
 

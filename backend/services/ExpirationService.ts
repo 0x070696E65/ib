@@ -1,5 +1,5 @@
 // services/ExpirationService.ts
-import { createIbServices } from './ib-service'
+import { createIbServices } from '.'
 import {
   VixExpirationModel,
   ExpirationCacheStateModel,

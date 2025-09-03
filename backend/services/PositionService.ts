@@ -1,4 +1,4 @@
-// services/ib-service/PositionService.ts
+// services/PositionService.ts
 import { EventName } from '@stoqey/ib'
 import { IbService } from './IbService'
 import { Position, PositionSummary } from './types'

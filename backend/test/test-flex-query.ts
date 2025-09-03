@@ -1,5 +1,5 @@
 // test-flex-query.ts - Flex Query API テスト
-import { createFlexQueryService } from '../services/ib-service/FlexQueryService'
+import { createFlexQueryService } from '../services/FlexQueryService'
 import * as dotenv from 'dotenv'
 
 dotenv.config()

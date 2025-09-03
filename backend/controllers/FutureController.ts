@@ -1,7 +1,6 @@
 // backend/controllers/FutureController.ts
 import { Request, Response } from 'express'
-import { FuturePriceService } from '../services/ib-service/FuturePriceService'
-import { createIbServices } from '../services/ib-service'
+import { createIbServices } from '../services'
 
 export class FutureController {
   /**`
