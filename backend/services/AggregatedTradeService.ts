@@ -1,7 +1,7 @@
 // backend/services/AggregatedTradeService.ts
-import { TradeOrder } from '../../models/TradeOrder'
+import { TradeOrder } from '../models/TradeOrder'
 import { FlexExecution, createFlexQueryService } from './FlexQueryService'
-import { extractOptionInfo } from '../../utils/util'
+import { extractOptionInfo } from '../utils/util'
 interface AggregatedExecution {
   orderID: number
   executions: FlexExecution[]
