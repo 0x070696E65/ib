@@ -1,5 +1,5 @@
 // frontend/src/components/pnl-tabs/MonthlyAnalysisTab.tsx
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Bar,
   XAxis,
@@ -59,7 +59,7 @@ const MonthlyAnalysisTab: React.FC<MonthlyAnalysisTabProps> = ({
   const [error, setError] = useState<string | null>(null)
 
   // データ取得
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -71,11 +71,11 @@ const MonthlyAnalysisTab: React.FC<MonthlyAnalysisTabProps> = ({
     } finally {
       setLoading(false)
     }
-  }
+  }, [startDate, endDate, symbol])
 
   useEffect(() => {
     fetchData()
-  }, [startDate, endDate, symbol])
+  }, [fetchData])
 
   // 季節性分析データ（月別平均）
   const seasonalityData = useMemo((): SeasonalityData[] => {

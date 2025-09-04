@@ -4,6 +4,7 @@ import { fetchBasicPnLAnalysis, type PnLAnalysisResult } from '../api/pnlService
 import SharedFilters, { type FilterSettings } from '../components/pnl-tabs/SharedFilters'
 import BasicAnalysisTab from '../components/pnl-tabs/BasicAnalysisTab'
 import MonthlyAnalysisTab from '../components/pnl-tabs/MonthlyAnalysisTab'
+import StrategyAnalysisTab from '../components/pnl-tabs/StrategyAnalysisTab'
 
 type TabId = 'basic' | 'monthly' | 'strategy'
 
@@ -241,13 +242,13 @@ const PnLAnalysisPage: React.FC = () => {
           )}
 
           {activeTab === 'strategy' && (
-            <div className="text-center py-16">
-              <div className="text-6xl mb-4">🎯</div>
-              <h3 className="text-xl text-white/70 mb-2">Strategy Analysis</h3>
-              <p className="text-gray-400 mb-6">
-                Tag-based strategy performance comparison coming soon...
-              </p>
-            </div>
+            <StrategyAnalysisTab
+              startDate={settings.dateRange.startDate || undefined}
+              endDate={settings.dateRange.endDate || undefined}
+              symbol={settings.symbol}
+              loading={loading}
+              onRefresh={handleRefresh}
+            />
           )}
         </div>
       </div>
