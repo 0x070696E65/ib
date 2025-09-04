@@ -166,8 +166,9 @@ export class PnLAnalysisService {
     }>
   > {
     const matchFilter: any = {
-      symbol: symbol,
+      symbol: { $regex: `^${symbol}`, $options: 'i' },
       totalRealizedPnL: { $exists: true, $ne: null },
+      positionStatus: { $in: ['CLOSED', 'EXPIRED'] },
     }
 
     if (startDate || endDate) {
@@ -197,13 +198,16 @@ export class PnLAnalysisService {
       {
         $project: {
           month: {
-            $concat: [
-              { $toString: '$_id.year' },
-              '-',
-              {
-                $substr: [{ $concat: ['0', { $toString: '$_id.month' }] }, -2, 2],
+            $dateToString: {
+              format: '%Y-%m',
+              date: {
+                $dateFromParts: {
+                  year: '$_id.year',
+                  month: '$_id.month',
+                  day: 1,
+                },
               },
-            ],
+            },
           },
           totalPnL: 1,
           tradeCount: 1,
@@ -235,8 +239,9 @@ export class PnLAnalysisService {
     }>
   > {
     const matchFilter: any = {
-      symbol: symbol,
+      symbol: { $regex: `^${symbol}`, $options: 'i' },
       totalRealizedPnL: { $exists: true, $ne: null },
+      positionStatus: { $in: ['CLOSED', 'EXPIRED'] },
       tag: { $exists: true, $ne: null },
     }
 
