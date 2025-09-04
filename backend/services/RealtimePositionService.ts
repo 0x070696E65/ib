@@ -97,8 +97,18 @@ export class RealtimePositionService extends EventEmitter {
   private onPnL(reqId: number, dailyPnL: number, unrealizedPnL: number, realizedPnL: number): void {
     console.log(`Account PnL Update: dailyPnL=${dailyPnL}, unrealizedPnL=${unrealizedPnL}, realizedPnL=${realizedPnL}`)
 
-    // 市場状況を判定（dailyPnLが0の場合は市場時間外と推定）
-    this.marketStatus.isOpen = dailyPnL !== 0
+    // 正しい市場時間判定
+    const now = new Date()
+    const nyTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const hour = nyTime.getHours()
+    const minutes = nyTime.getMinutes()
+    const day = nyTime.getDay()
+
+    // 平日 && 9:30-16:00 EST/EDT
+    const isWeekday = day >= 1 && day <= 5
+    const isMarketHours = (hour === 9 && minutes >= 30) || (hour > 9 && hour < 16)
+
+    this.marketStatus.isOpen = isWeekday && isMarketHours
 
     this.emit('accountPnlUpdated', {
       dailyPnL,
