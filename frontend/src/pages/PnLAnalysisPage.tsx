@@ -1,5 +1,5 @@
 // frontend/src/pages/PnLAnalysisPage.tsx
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   LineChart,
   Line,
@@ -42,7 +42,7 @@ const PnLAnalysisPage: React.FC = () => {
   const [fillZeroDates, setFillZeroDates] = useState(true)
 
   // データ取得関数
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -58,12 +58,12 @@ const PnLAnalysisPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [startDate, endDate])
 
   // 初回データ取得
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   // フィルタ適用
   const handleApplyFilter = async () => {
