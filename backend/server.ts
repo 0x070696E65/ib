@@ -11,6 +11,7 @@ import tradeRoutes from './routes/trades'
 import optionRoutes from './routes/options'
 import futuresRouter from './routes/futures'
 import cacheRouter from './routes/cache'
+import pnlRouter from './routes/pnl'
 
 // データベース接続
 import { connectToDatabase } from './database/connection'
@@ -45,6 +46,7 @@ app.use('/api/trades', tradeRoutes)
 app.use('/api/options', optionRoutes)
 app.use('/api/futures', futuresRouter)
 app.use('/api/cache', cacheRouter)
+app.use('/api/pnl', pnlRouter)
 
 // 静的ファイル配信（本番環境用）
 if (process.env.NODE_ENV === 'production') {

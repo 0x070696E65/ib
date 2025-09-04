@@ -1,5 +1,5 @@
 // frontend/src/pages/OptionMatrixPage.tsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   fetchAvailableExpirations,
   calculateProfit,
@@ -191,7 +191,7 @@ export default function OptionMatrixPage() {
     setProfitMatrix(null)
   }
 
-  const calculateCombinedProfit = async () => {
+  const calculateCombinedProfit = useCallback(async () => {
     if (selectedPositions.length === 0) return
 
     setCalculatingProfit(true)
@@ -260,7 +260,7 @@ export default function OptionMatrixPage() {
     } finally {
       setCalculatingProfit(false)
     }
-  }
+  }, [selectedPositions])
 
   const handleStrategySelect = (strategy: StrategyPair) => {
     const newPositions: SelectedPosition[] = [
@@ -284,14 +284,13 @@ export default function OptionMatrixPage() {
     console.log(`VIX下落戦略適用: SELL ${strategy.sellStrike}P (ヘッジ) / BUY ${strategy.buyStrike}P (メイン利益)`)
   }
 
-  // 損益計算を選択ポジション変更時に自動実行
   useEffect(() => {
     if (selectedPositions.length > 0) {
       calculateCombinedProfit()
     } else {
       setProfitMatrix(null)
     }
-  }, [selectedPositions])
+  }, [selectedPositions, calculateCombinedProfit])
 
   const formatPrice = (value: number) => value.toFixed(2)
   const formatProfit = (value: number) => {

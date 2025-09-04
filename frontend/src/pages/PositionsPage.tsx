@@ -1,6 +1,6 @@
 // frontend/src/pages/PositionsPage.tsx - 拡張版
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import React from 'react'
 import { PositionMonitor, fetchCurrentPositions, controlMonitoring } from '../api/positionService'
 import type { Position, PositionStatus } from '../api/positionService'
@@ -45,41 +45,7 @@ export default function PositionsPage() {
   
   const monitorRef = useRef<PositionMonitor | null>(null)
 
-  // 初回データ読み込み
-  useEffect(() => {
-    loadInitialData()
-
-    return () => {
-      if (monitorRef.current) {
-        monitorRef.current.disconnect()
-      }
-    }
-  }, [])
-
-  const loadInitialData = async () => {
-    try {
-      setLoading(true)
-      const data = await fetchCurrentPositions()
-      data.positions.sort((a, b) => {
-        if (!a.expiry) return 1
-        if (!b.expiry) return -1
-        return parseInt(a.expiry, 10) - parseInt(b.expiry, 10)
-      })
-      setPositions(data.positions)
-      setStatus(data.status)
-      setLastUpdate(new Date().toLocaleTimeString())
-      
-      // ポジションマッチングを実行
-      await loadPositionMatching()
-    } catch (err) {
-      setError('データの読み込みに失敗しました')
-      console.error('Initial data load error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadPositionMatching = async () => {
+  const loadPositionMatching = useCallback(async () => {
     try {
       const matchingData = await fetchPositionMatching()
       setMatchingData(matchingData)
@@ -104,7 +70,41 @@ export default function PositionsPage() {
     } catch (err) {
       console.error('Position matching error:', err)
     }
-  }
+  }, [])
+
+  const loadInitialData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchCurrentPositions()
+      data.positions.sort((a, b) => {
+        if (!a.expiry) return 1
+        if (!b.expiry) return -1
+        return parseInt(a.expiry, 10) - parseInt(b.expiry, 10)
+      })
+      setPositions(data.positions)
+      setStatus(data.status)
+      setLastUpdate(new Date().toLocaleTimeString())
+      
+      // ポジションマッチングを実行
+      await loadPositionMatching()
+    } catch (err) {
+      setError('データの読み込みに失敗しました')
+      console.error('Initial data load error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [loadPositionMatching])
+
+  // 初回データ読み込み
+  useEffect(() => {
+    loadInitialData()
+
+    return () => {
+      if (monitorRef.current) {
+        monitorRef.current.disconnect()
+      }
+    }
+  }, [loadInitialData])
 
   const generatePositionKey = (pos: Position | PositionWithMatch): string => {
     return `${pos.symbol}_${pos.strike}_${pos.expiry}_${pos.optionType}`

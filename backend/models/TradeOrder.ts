@@ -29,7 +29,7 @@ export interface ITradeOrder extends Document {
   totalCommission: number
   commissionCurrency?: string
   totalNetCash: number
-  totalRealizedPnL?: number
+  totalRealizedPnL: number
 
   // 約定詳細（配列）
   execIDs: string[] // 元のexecIDの配列
