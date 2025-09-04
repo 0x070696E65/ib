@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import React from 'react'
 import { PositionMonitor, fetchCurrentPositions, controlMonitoring } from '../api/positionService'
 import type { Position, PositionStatus } from '../api/positionService'
-import { fetchPositionMatching, createBundle, tagPosition, fetchAnalysisData, importFlexData } from '../api/tradeService'
+import { fetchPositionMatching, createBundle, tagPosition, fetchAnalysisData } from '../api/tradeService'
 import type { PositionMatchingResult, BundleCreateRequest, TagPositionRequest } from '../types/api'
 import type { AnalysisData, TradeOrder } from '../types/trades'
 
@@ -22,7 +22,6 @@ interface PositionWithMatch extends Position {
 }
 
 export default function PositionsPage() {
-  const [importLoading, setImportLoading] = useState(false)
   const [positions, setPositions] = useState<PositionWithMatch[]>([])
   const [status, setStatus] = useState<PositionStatus | null>(null)
   const [accountPnL, setAccountPnL] = useState<AccountPnL | null>(null)
@@ -120,49 +119,25 @@ export default function PositionsPage() {
     }
   }
 
-  // FlexImport機能追加
-const handleImportFlexData = async () => {
-  setImportLoading(true)
-  setError(null)
-  
-  try {
-    const result = await importFlexData()
-    console.log('FlexQuery import result:', result)
-    
-    // インポート成功後、データを再読み込み
-    if (result.imported > 0) {
-      await loadInitialData()
-      setError(`インポート完了: ${result.imported}件追加、${result.skipped}件スキップ`)
-    } else {
-      setError(`新しいデータはありませんでした: ${result.skipped}件スキップ`)
+  // 監視ボタン統合機能
+  const handleToggleMonitoring = async () => {
+    try {
+      setLoading(true)
+      
+      if (isMonitoring) {
+        await controlMonitoring('stop')
+        stopPositionMonitoring()
+      } else {
+        await controlMonitoring('start')
+        startPositionMonitoring()
+      }
+    } catch (err) {
+      console.error(`Monitor control error:`, err)
+      setError(`監視${isMonitoring ? '停止' : '開始'}に失敗しました`)
+    } finally {
+      setLoading(false)
     }
-  } catch (err) {
-    console.error('Flex import error:', err)
-    setError('FlexQueryデータのインポートに失敗しました')
-  } finally {
-    setImportLoading(false)
   }
-}
-
-// 監視ボタン統合機能
-const handleToggleMonitoring = async () => {
-  try {
-    setLoading(true)
-    
-    if (isMonitoring) {
-      await controlMonitoring('stop')
-      stopPositionMonitoring()
-    } else {
-      await controlMonitoring('start')
-      startPositionMonitoring()
-    }
-  } catch (err) {
-    console.error(`Monitor control error:`, err)
-    setError(`監視${isMonitoring ? '停止' : '開始'}に失敗しました`)
-  } finally {
-    setLoading(false)
-  }
-}
 
   const startPositionMonitoring = () => {
     if (monitorRef.current) {
@@ -454,37 +429,26 @@ const handleToggleMonitoring = async () => {
               </div>
 
               <div className="flex space-x-3">
-  <button
-    onClick={handleToggleMonitoring}
-    disabled={loading}
-    className={`px-4 py-2 ${
-      isMonitoring 
-        ? 'bg-red-600 hover:bg-red-700' 
-        : 'bg-green-600 hover:bg-green-700'
-    } disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 min-w-[100px]`}
-  >
-    {loading ? '処理中...' : isMonitoring ? '監視停止' : '監視開始'}
-  </button>
-  
-  <button
-    onClick={loadInitialData}
-    disabled={loading || isMonitoring}
-    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
-  >
-    {loading ? '更新中...' : '更新'}
-  </button>
-  
-  <button
-    onClick={handleImportFlexData}
-    disabled={importLoading || isMonitoring}
-    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
-  >
-    {importLoading && (
-      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-    )}
-    <span>{importLoading ? 'インポート中...' : 'Flexインポート'}</span>
-  </button>
-</div>
+                <button
+                  onClick={handleToggleMonitoring}
+                  disabled={loading}
+                  className={`px-4 py-2 ${
+                    isMonitoring 
+                      ? 'bg-red-600 hover:bg-red-700' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  } disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 min-w-[100px]`}
+                >
+                  {loading ? '処理中...' : isMonitoring ? '監視停止' : '監視開始'}
+                </button>
+                
+                <button
+                  onClick={loadInitialData}
+                  disabled={loading || isMonitoring}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
+                >
+                  {loading ? '更新中...' : '更新'}
+                </button>
+              </div>
             </div>
 
             {/* Bundle/Tag Control Row */}

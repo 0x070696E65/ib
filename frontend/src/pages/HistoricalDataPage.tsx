@@ -1,12 +1,11 @@
 // frontend/src/pages/HistoricalDataPage.tsx
 import { useState, useEffect } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
-import type { OptionClosePrice, FetchSummary, FutureClosePrice } from '../../../shared/types'
-import { fetchAllVixData, fetchVixExpirations, fetchAllVixDataFromMongo, fetchAllVixFutureData, fetchAllVixFutureDataFromMongo, fetchVixFutureExpirations } from '../api/vixService'
+import type { OptionClosePrice, FutureClosePrice } from '../../../shared/types'
+import { fetchVixExpirations, fetchAllVixDataFromMongo, fetchAllVixFutureDataFromMongo, fetchVixFutureExpirations } from '../api/vixService'
 
 export default function HistoricalDataPage() {
   const [activeTab, setActiveTab] = useState<'options' | 'futures'>('options')
-  const [loading, setLoading] = useState(false)
   
   // Options state
   const [optionContracts, setOptionContracts] = useState<string[]>([])
@@ -20,32 +19,6 @@ export default function HistoricalDataPage() {
   
   const [page, setPage] = useState(1)
   const limit = 20
-
-  // オプション一括取得
-  const handleFetchOptionData = async () => {
-    setLoading(true)
-    try {
-      const result: FetchSummary = await fetchAllVixData()
-      console.log('一括取得結果:', result)
-    } catch (error) {
-      console.error('データ取得エラー:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 先物一括取得
-  const handleFetchFutureData = async () => {
-    setLoading(true)
-    try {
-      const result: FetchSummary = await fetchAllVixFutureData()
-      console.log('先物一括取得結果:', result)
-    } catch (error) {
-      console.error('先物データ取得エラー:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   // オプション満期日一覧を取得
   useEffect(() => {
@@ -160,9 +133,10 @@ export default function HistoricalDataPage() {
           <p className="text-gray-400 text-lg">Options & Futures analytics platform</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
+        {/* Tabs + Controls（中央寄せ） */}
+        <div className="flex flex-col sm:flex-row justify-center items-center mb-8 gap-4">
+          {/* Tabs */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20 flex">
             <button
               onClick={() => {
                 setActiveTab('options')
@@ -190,31 +164,8 @@ export default function HistoricalDataPage() {
               Futures
             </button>
           </div>
-        </div>
 
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8 justify-center items-center">
-          <button 
-            onClick={activeTab === 'options' ? handleFetchOptionData : handleFetchFutureData}
-            disabled={loading}
-            className={`group relative px-8 py-3 rounded-xl font-semibold text-white transition-all duration-300 transform hover:scale-105 ${
-              loading 
-                ? 'bg-gray-600 cursor-not-allowed' 
-                : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-blue-500/25'
-            }`}
-          >
-            <span className="relative z-10">
-              {loading ? (
-                <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  データ取得中...
-                </div>
-              ) : (
-                `VIX${activeTab === 'options' ? 'オプション' : '先物'}データ取得`
-              )}
-            </span>
-          </button>
-
+          {/* Controls */}
           <div className="relative">
             <select
               value={activeTab === 'options' ? selectedOptionContract : selectedFutureContract}
@@ -241,6 +192,7 @@ export default function HistoricalDataPage() {
             </div>
           </div>
         </div>
+
 
         {/* Data Table */}
         {((activeTab === 'options' && selectedOptionContract) || (activeTab === 'futures' && selectedFutureContract)) && (
