@@ -28,11 +28,41 @@ export interface PnLAnalysisResult {
   }
 }
 
+export interface TradeDetail {
+  _id: string
+  orderID: number
+  tradeDate: Date
+  symbol: string
+  description: string
+  buySell: 'BUY' | 'SELL'
+  totalQuantity: number
+  avgPrice: number
+  totalRealizedPnL: number
+  tag?: string
+  bundleId?: string
+  positionStatus: string
+  expiry?: string
+  strike?: number
+  putCall?: 'P' | 'C'
+}
+
+export interface TradeDetailsResult {
+  trades: TradeDetail[]
+  totalCount: number
+  currentPage: number
+  totalPages: number
+}
+
 export class PnLAnalysisService {
   /**
-   * 基本的な損益分析データを取得
+   * 基本的な損益分析データを取得（タグフィルタ追加）
    */
-  async getBasicPnLAnalysis(startDate?: Date, endDate?: Date, symbol = 'VIX'): Promise<PnLAnalysisResult> {
+  async getBasicPnLAnalysis(
+    startDate?: Date,
+    endDate?: Date,
+    symbol = 'VIX',
+    tag?: string
+  ): Promise<PnLAnalysisResult> {
     const dateFilter: any = {}
     if (startDate) dateFilter.$gte = startDate
     if (endDate) dateFilter.$lte = endDate
@@ -45,6 +75,11 @@ export class PnLAnalysisService {
 
     if (Object.keys(dateFilter).length > 0) {
       matchFilter.tradeDate = dateFilter
+    }
+
+    // タグフィルタ追加
+    if (tag) {
+      matchFilter.tag = tag
     }
 
     const trades = await TradeOrder.find(matchFilter)
@@ -89,7 +124,6 @@ export class PnLAnalysisService {
 
     trades.forEach((trade) => {
       const dateKey = trade.tradeDate.toISOString().split('T')[0]
-
       let pnl = trade.totalRealizedPnL
 
       // 日次集計
@@ -147,6 +181,65 @@ export class PnLAnalysisService {
         start: trades[0].tradeDate,
         end: trades[trades.length - 1].tradeDate,
       },
+    }
+  }
+
+  /**
+   * 取引詳細データを取得（ページネーション付き）
+   */
+  async getTradeDetails(
+    startDate?: Date,
+    endDate?: Date,
+    symbol = 'VIX',
+    tag?: string,
+    page = 1,
+    limit = 50,
+    sortBy = 'tradeDate',
+    sortOrder: 'asc' | 'desc' = 'desc'
+  ): Promise<TradeDetailsResult> {
+    const dateFilter: any = {}
+    if (startDate) dateFilter.$gte = startDate
+    if (endDate) dateFilter.$lte = endDate
+
+    const matchFilter: any = {
+      symbol: { $regex: `^${symbol}`, $options: 'i' },
+      totalRealizedPnL: { $exists: true, $ne: null },
+      positionStatus: { $in: ['CLOSED', 'EXPIRED'] },
+    }
+
+    if (Object.keys(dateFilter).length > 0) {
+      matchFilter.tradeDate = dateFilter
+    }
+
+    // タグフィルタ追加
+    if (tag) {
+      matchFilter.tag = tag
+    }
+
+    // 総数取得
+    const totalCount = await TradeOrder.countDocuments(matchFilter)
+    const totalPages = Math.ceil(totalCount / limit)
+    const skip = (page - 1) * limit
+
+    // ソート設定
+    const sortOptions: any = {}
+    sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1
+
+    // データ取得
+    const trades = await TradeOrder.find(matchFilter)
+      .select(
+        'orderID tradeDate symbol description buySell totalQuantity avgPrice totalRealizedPnL tag bundleId positionStatus expiry strike putCall'
+      )
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limit)
+      .lean()
+
+    return {
+      trades: trades as unknown as TradeDetail[],
+      totalCount,
+      currentPage: page,
+      totalPages,
     }
   }
 

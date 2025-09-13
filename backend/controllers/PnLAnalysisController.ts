@@ -3,23 +3,24 @@ import { Request, Response } from 'express'
 import { PnLAnalysisService } from '../services/PnLAnalysisService'
 
 export class PnLAnalysisController {
-  private pnlService: PnLAnalysisService
+  private pnlAnalysisService: PnLAnalysisService
 
   constructor() {
-    this.pnlService = new PnLAnalysisService()
+    this.pnlAnalysisService = new PnLAnalysisService()
   }
 
   /**
-   * GET /api/pnl/basic - 基本損益分析
+   * 基本損益分析を取得（タグフィルタ対応）
    */
-  public getBasicAnalysis = async (req: Request, res: Response): Promise<void> => {
+  async getBasicPnLAnalysis(req: Request, res: Response): Promise<void> {
     try {
-      const { startDate, endDate, symbol } = req.query
+      const { startDate, endDate, symbol = 'VIX', tag } = req.query
 
       const start = startDate ? new Date(startDate as string) : undefined
       const end = endDate ? new Date(endDate as string) : undefined
+      const selectedTag = tag && tag !== '' ? (tag as string) : undefined
 
-      const analysis = await this.pnlService.getBasicPnLAnalysis(start, end, (symbol as string) || 'VIX')
+      const analysis = await this.pnlAnalysisService.getBasicPnLAnalysis(start, end, symbol as string, selectedTag)
 
       res.json({
         success: true,
@@ -30,23 +31,81 @@ export class PnLAnalysisController {
       console.error('基本損益分析エラー:', error)
       res.status(500).json({
         success: false,
-        message: '損益分析の取得に失敗しました',
+        message: '基本損益分析の取得に失敗しました',
         error: error instanceof Error ? error.message : 'Unknown error',
       })
     }
   }
 
   /**
-   * GET /api/pnl/monthly - 月次集計
+   * 取引詳細を取得（ページネーション付き）
    */
-  public getMonthlyAnalysis = async (req: Request, res: Response): Promise<void> => {
+  async getTradeDetails(req: Request, res: Response): Promise<void> {
     try {
-      const { startDate, endDate, symbol } = req.query
+      const {
+        startDate,
+        endDate,
+        symbol = 'VIX',
+        tag,
+        page = '1',
+        limit = '50',
+        sortBy = 'tradeDate',
+        sortOrder = 'desc',
+      } = req.query
+
+      const start = startDate ? new Date(startDate as string) : undefined
+      const end = endDate ? new Date(endDate as string) : undefined
+      const selectedTag = tag && tag !== '' ? (tag as string) : undefined
+
+      const pageNum = parseInt(page as string, 10)
+      const limitNum = parseInt(limit as string, 10)
+
+      // バリデーション
+      if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+        res.status(400).json({
+          success: false,
+          message: 'Invalid page or limit parameters',
+        })
+        return
+      }
+
+      const details = await this.pnlAnalysisService.getTradeDetails(
+        start,
+        end,
+        symbol as string,
+        selectedTag,
+        pageNum,
+        limitNum,
+        sortBy as string,
+        sortOrder as 'asc' | 'desc'
+      )
+
+      res.json({
+        success: true,
+        data: details,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.error('取引詳細取得エラー:', error)
+      res.status(500).json({
+        success: false,
+        message: '取引詳細の取得に失敗しました',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  }
+
+  /**
+   * 月次損益分析を取得
+   */
+  async getMonthlyPnLAnalysis(req: Request, res: Response): Promise<void> {
+    try {
+      const { startDate, endDate, symbol = 'VIX' } = req.query
 
       const start = startDate ? new Date(startDate as string) : undefined
       const end = endDate ? new Date(endDate as string) : undefined
 
-      const monthlyData = await this.pnlService.getMonthlyPnLSummary(start, end, (symbol as string) || 'VIX')
+      const monthlyData = await this.pnlAnalysisService.getMonthlyPnLSummary(start, end, symbol as string)
 
       res.json({
         success: true,
@@ -64,16 +123,16 @@ export class PnLAnalysisController {
   }
 
   /**
-   * GET /api/pnl/tags - タグ別分析
+   * タグ別分析を取得
    */
-  public getTagAnalysis = async (req: Request, res: Response): Promise<void> => {
+  async getTagAnalysis(req: Request, res: Response): Promise<void> {
     try {
-      const { startDate, endDate, symbol } = req.query
+      const { startDate, endDate, symbol = 'VIX' } = req.query
 
       const start = startDate ? new Date(startDate as string) : undefined
       const end = endDate ? new Date(endDate as string) : undefined
 
-      const tagData = await this.pnlService.getTagAnalysis(start, end, (symbol as string) || 'VIX')
+      const tagData = await this.pnlAnalysisService.getTagAnalysis(start, end, symbol as string)
 
       res.json({
         success: true,

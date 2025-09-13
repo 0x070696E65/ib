@@ -63,7 +63,8 @@ const PnLAnalysisPage: React.FC = () => {
     dateRange: { startDate: '', endDate: '' },
     tempDateRange: { startDate: '', endDate: '' },
     fillZeroDates: true,
-    symbol: 'VIX'
+    symbol: 'VIX',
+    tag: ''
   })
 
   // 日付変更の検出
@@ -226,6 +227,10 @@ const PnLAnalysisPage: React.FC = () => {
               summary={basicData.summary}
               dailyData={basicData.dailyData}
               fillZeroDates={settings.fillZeroDates}
+              startDate={settings.dateRange.startDate || undefined}
+              endDate={settings.dateRange.endDate || undefined}
+              symbol={settings.symbol}
+              tag={settings.tag || undefined}
               loading={loading}
               onRefresh={handleRefresh}
             />

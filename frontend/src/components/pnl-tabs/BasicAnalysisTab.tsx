@@ -1,5 +1,5 @@
 // frontend/src/components/pnl-tabs/BasicAnalysisTab.tsx
-import React, { useMemo } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import {
   LineChart,
   Line,
@@ -13,7 +13,7 @@ import {
   Cell,
   type DotProps
 } from 'recharts'
-import { type BasicPnLData, type PeriodPnLSummary } from '../../api/pnlService'
+import { type BasicPnLData, type PeriodPnLSummary, type TradeDetail, type TradeDetailsResult, fetchTradeDetails } from '../../api/pnlService'
 
 interface ChartDataPoint extends BasicPnLData {
   isFilledDate?: boolean // ゼロ埋めされた日かどうか
@@ -29,6 +29,10 @@ interface BasicAnalysisTabProps {
   summary: PeriodPnLSummary
   dailyData: BasicPnLData[]
   fillZeroDates: boolean
+  startDate?: string
+  endDate?: string
+  symbol: string
+  tag?: string
   loading?: boolean
   onRefresh?: () => void
 }
@@ -37,9 +41,66 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
   summary,
   dailyData,
   fillZeroDates,
+  startDate,
+  endDate,
+  symbol,
+  tag,
   loading = false,
   onRefresh
 }) => {
+  // 取引詳細の状態管理
+  const [tradeDetails, setTradeDetails] = useState<TradeDetailsResult | null>(null)
+  const [tradesLoading, setTradesLoading] = useState(false)
+  const [tradesError, setTradesError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sortBy, setSortBy] = useState('tradeDate')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  // 取引詳細データ取得
+  const fetchTradesData = async (page = 1) => {
+    setTradesLoading(true)
+    setTradesError(null)
+    try {
+      const result = await fetchTradeDetails(
+        startDate,
+        endDate,
+        symbol,
+        tag,
+        page,
+        50,
+        sortBy,
+        sortOrder
+      )
+      setTradeDetails(result)
+      setCurrentPage(page)
+    } catch (err) {
+      setTradesError(err instanceof Error ? err.message : '取引詳細の取得に失敗しました')
+      console.error('取引詳細取得エラー:', err)
+    } finally {
+      setTradesLoading(false)
+    }
+  }
+
+  // 初回データ取得とフィルタ変更時の再取得
+  useEffect(() => {
+    fetchTradesData(1)
+  }, [startDate, endDate, symbol, tag, sortBy, sortOrder])
+
+  // ソート変更ハンドラ
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortOrder('desc')
+    }
+  }
+
+  // ページ変更ハンドラ
+  const handlePageChange = (page: number) => {
+    fetchTradesData(page)
+  }
+
   // 日付ゼロ埋め処理（フロントエンド側）
   const processedChartData = useMemo((): ChartDataPoint[] => {
     if (!dailyData.length) return []
@@ -126,6 +187,89 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
     if (entry.dailyPnL > 0) return '#10B981' // 緑
     if (entry.dailyPnL < 0) return '#EF4444' // 赤
     return '#6B7280' // グレー（ゼロ）
+  }
+
+  // bundleIdの色生成（同じbundleIdは同じ色）
+  const getBundleColor = (bundleId: string) => {
+    const colors = ['#8B5CF6', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#F97316']
+    const hash = bundleId.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0)
+      return a & a
+    }, 0)
+    return colors[Math.abs(hash) % colors.length]
+  }
+
+  // 取引詳細テーブル行コンポーネント
+  const TradeRow: React.FC<{ trade: TradeDetail; index: number }> = ({ trade }) => {
+    const bundleColor = trade.bundleId ? getBundleColor(trade.bundleId) : undefined
+
+    return (
+      <tr 
+        className={`border-b border-white/5 hover:bg-white/5 transition-colors duration-200 ${
+          trade.bundleId ? 'border-l-4' : ''
+        }`}
+        style={trade.bundleId ? { borderLeftColor: bundleColor } : {}}
+      >
+        <td className="py-3 px-4 text-sm text-gray-300">
+          {new Date(trade.tradeDate).toLocaleDateString()}
+        </td>
+        <td className="py-3 px-4 text-sm text-white font-mono">
+          {trade.orderID}
+        </td>
+        <td className="py-3 px-4 text-sm text-gray-300 max-w-xs">
+          <div className="truncate" title={trade.description}>
+            {trade.description}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {trade.expiry && `${trade.expiry} ${trade.strike}${trade.putCall}`}
+          </div>
+        </td>
+        <td className="py-3 px-4 text-sm">
+          <span className={`px-2 py-1 rounded text-xs font-medium ${
+            trade.buySell === 'BUY' 
+              ? 'bg-blue-500/20 text-blue-400' 
+              : 'bg-red-500/20 text-red-400'
+          }`}>
+            {trade.buySell}
+          </span>
+        </td>
+        <td className="py-3 px-4 text-sm text-white font-mono text-right">
+          {trade.totalQuantity.toLocaleString()}
+        </td>
+        <td className="py-3 px-4 text-sm text-white font-mono text-right">
+          ${trade.avgPrice.toFixed(2)}
+        </td>
+        <td className={`py-3 px-4 text-sm font-mono text-right font-medium ${
+          trade.totalRealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'
+        }`}>
+          {formatCurrency(trade.totalRealizedPnL)}
+        </td>
+        <td className="py-3 px-4 text-sm">
+          {trade.tag && (
+            <span className={`px-2 py-1 rounded text-xs font-medium ${
+              trade.tag === 'PP' ? 'bg-purple-500/20 text-purple-400' :
+              trade.tag === 'P+' ? 'bg-green-500/20 text-green-400' :
+              'bg-orange-500/20 text-orange-400'
+            }`}>
+              {trade.tag}
+            </span>
+          )}
+        </td>
+        <td className="py-3 px-4 text-sm">
+          {trade.bundleId && (
+            <div className="flex items-center space-x-2">
+              <div 
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: bundleColor }}
+              ></div>
+              <span className="text-xs text-gray-400 font-mono">
+                {trade.bundleId.substring(0, 8)}...
+              </span>
+            </div>
+          )}
+        </td>
+      </tr>
+    )
   }
 
   const formatDate = (dateStr: string) => {
@@ -266,6 +410,132 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* 取引詳細テーブル */}
+      <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">Trade Details</h2>
+          {tradeDetails && (
+            <div className="text-sm text-gray-400">
+              Showing {((tradeDetails.currentPage - 1) * 50) + 1}-{Math.min(tradeDetails.currentPage * 50, tradeDetails.totalCount)} of {tradeDetails.totalCount} trades
+            </div>
+          )}
+        </div>
+
+        {tradesLoading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
+            <p className="text-gray-400">Loading trade details...</p>
+          </div>
+        ) : tradesError ? (
+          <div className="text-center py-8">
+            <div className="text-red-400 mb-2">{tradesError}</div>
+            <button
+              onClick={() => fetchTradesData(currentPage)}
+              className="text-purple-400 hover:text-purple-300 text-sm underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : tradeDetails && tradeDetails.trades.length > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th 
+                      className="text-left py-3 px-4 text-gray-300 cursor-pointer hover:text-white transition-colors"
+                      onClick={() => handleSort('tradeDate')}
+                    >
+                      Date
+                      {sortBy === 'tradeDate' && (
+                        <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </th>
+                    <th className="text-left py-3 px-4 text-gray-300">Order ID</th>
+                    <th className="text-left py-3 px-4 text-gray-300">Description</th>
+                    <th className="text-left py-3 px-4 text-gray-300">Side</th>
+                    <th className="text-right py-3 px-4 text-gray-300">Quantity</th>
+                    <th className="text-right py-3 px-4 text-gray-300">Avg Price</th>
+                    <th 
+                      className="text-right py-3 px-4 text-gray-300 cursor-pointer hover:text-white transition-colors"
+                      onClick={() => handleSort('totalRealizedPnL')}
+                    >
+                      P&L
+                      {sortBy === 'totalRealizedPnL' && (
+                        <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </th>
+                    <th className="text-left py-3 px-4 text-gray-300">Tag</th>
+                    <th className="text-left py-3 px-4 text-gray-300">Bundle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradeDetails.trades.map((trade, index) => (
+                    <TradeRow key={trade._id} trade={trade} index={index} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ページネーション */}
+            {tradeDetails.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                <div className="text-sm text-gray-400">
+                  Page {tradeDetails.currentPage} of {tradeDetails.totalPages}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handlePageChange(tradeDetails.currentPage - 1)}
+                    disabled={tradeDetails.currentPage <= 1}
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors duration-200"
+                  >
+                    Previous
+                  </button>
+                  
+                  {/* ページ番号 */}
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: Math.min(5, tradeDetails.totalPages) }, (_, i) => {
+                      const pageNum = Math.max(1, tradeDetails.currentPage - 2) + i
+                      if (pageNum > tradeDetails.totalPages) return null
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-colors duration-200 ${
+                            pageNum === tradeDetails.currentPage
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-white/10 hover:bg-white/20 text-gray-300'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => handlePageChange(tradeDetails.currentPage + 1)}
+                    disabled={tradeDetails.currentPage >= tradeDetails.totalPages}
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors duration-200"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-8">
+            <div className="text-6xl mb-4">📋</div>
+            <h3 className="text-xl text-white/70 mb-2">No trade details found</h3>
+            <p className="text-gray-400">
+              No individual trades match the current filters.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

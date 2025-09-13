@@ -5,13 +5,16 @@ import { PnLAnalysisController } from '../controllers/PnLAnalysisController'
 const router = express.Router()
 const pnlController = new PnLAnalysisController()
 
-// GET /api/pnl/basic - 基本損益分析
-router.get('/basic', pnlController.getBasicAnalysis)
+// 基本損益分析（タグフィルタ対応）
+router.get('/basic', (req, res) => pnlController.getBasicPnLAnalysis(req, res))
 
-// GET /api/pnl/monthly - 月次集計
-router.get('/monthly', pnlController.getMonthlyAnalysis)
+// 取引詳細（ページネーション付き）- 新規追加
+router.get('/trades', (req, res) => pnlController.getTradeDetails(req, res))
 
-// GET /api/pnl/tags - タグ別分析
-router.get('/tags', pnlController.getTagAnalysis)
+// 月次分析
+router.get('/monthly', (req, res) => pnlController.getMonthlyPnLAnalysis(req, res))
+
+// タグ別分析
+router.get('/tags', (req, res) => pnlController.getTagAnalysis(req, res))
 
 export default router

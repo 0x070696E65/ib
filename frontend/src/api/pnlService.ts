@@ -26,17 +26,44 @@ export interface PnLAnalysisResult {
   }
 }
 
+export interface TradeDetail {
+  _id: string
+  orderID: number
+  tradeDate: string
+  symbol: string
+  description: string
+  buySell: 'BUY' | 'SELL'
+  totalQuantity: number
+  avgPrice: number
+  totalRealizedPnL: number
+  tag?: string
+  bundleId?: string
+  positionStatus: string
+  expiry?: string
+  strike?: number
+  putCall?: 'P' | 'C'
+}
+
+export interface TradeDetailsResult {
+  trades: TradeDetail[]
+  totalCount: number
+  currentPage: number
+  totalPages: number
+}
+
 const BASE_URL = import.meta.env.VITE_API_URL
 
 export const fetchBasicPnLAnalysis = async (
   startDate?: string,
   endDate?: string,
-  symbol = 'VIX'
+  symbol = 'VIX',
+  tag?: string
 ): Promise<PnLAnalysisResult> => {
   const params = new URLSearchParams()
   if (startDate) params.append('startDate', startDate)
   if (endDate) params.append('endDate', endDate)
   if (symbol !== 'VIX') params.append('symbol', symbol)
+  if (tag) params.append('tag', tag)
 
   const response = await fetch(`${BASE_URL}/pnl/basic?${params.toString()}`)
 
@@ -48,6 +75,41 @@ export const fetchBasicPnLAnalysis = async (
 
   if (!result.success) {
     throw new Error(result.message || '損益分析取得失敗')
+  }
+
+  return result.data
+}
+
+export const fetchTradeDetails = async (
+  startDate?: string,
+  endDate?: string,
+  symbol = 'VIX',
+  tag?: string,
+  page = 1,
+  limit = 50,
+  sortBy = 'tradeDate',
+  sortOrder: 'asc' | 'desc' = 'desc'
+): Promise<TradeDetailsResult> => {
+  const params = new URLSearchParams()
+  if (startDate) params.append('startDate', startDate)
+  if (endDate) params.append('endDate', endDate)
+  if (symbol !== 'VIX') params.append('symbol', symbol)
+  if (tag) params.append('tag', tag)
+  params.append('page', page.toString())
+  params.append('limit', limit.toString())
+  params.append('sortBy', sortBy)
+  params.append('sortOrder', sortOrder)
+
+  const response = await fetch(`${BASE_URL}/pnl/trades?${params.toString()}`)
+
+  if (!response.ok) {
+    throw new Error(`取引詳細取得失敗: ${response.status}`)
+  }
+
+  const result = await response.json()
+
+  if (!result.success) {
+    throw new Error(result.message || '取引詳細取得失敗')
   }
 
   return result.data
