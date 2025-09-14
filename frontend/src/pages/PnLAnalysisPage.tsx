@@ -76,7 +76,8 @@ const PnLAnalysisPage: React.FC = () => {
   const fetchBasicData = useCallback(async (
     startDate?: string,
     endDate?: string,
-    symbol = 'VIX'
+    symbol = 'VIX',
+    tag?: string
   ) => {
     setLoading(true)
     setError(null)
@@ -84,7 +85,8 @@ const PnLAnalysisPage: React.FC = () => {
       const result = await fetchBasicPnLAnalysis(
         startDate || undefined,
         endDate || undefined,
-        symbol
+        symbol,
+        tag || undefined
       )
       setBasicData(result)
       
@@ -119,7 +121,8 @@ const PnLAnalysisPage: React.FC = () => {
     await fetchBasicData(
       settings.tempDateRange.startDate,
       settings.tempDateRange.endDate,
-      settings.symbol
+      settings.symbol,
+      settings.tag || undefined
     )
   }
 

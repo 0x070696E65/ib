@@ -195,6 +195,11 @@ export class AggregatedTradeService {
           order.closeDate = oppositeOrder.tradeDate
           await order.save()
 
+          oppositeOrder.positionStatus = 'CLOSED'
+          oppositeOrder.closeDate = oppositeOrder.tradeDate
+          oppositeOrder.tag = order.tag // タグを引き継ぐ
+          await oppositeOrder.save()
+
           console.log(`発注 ${order.orderID} (${order.symbol} ${order.strike}${order.putCall}) をクローズ済みに更新`)
           break
         }
