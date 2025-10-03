@@ -313,7 +313,18 @@ export default function PositionsPage() {
 
   // PnL表示の優先順位: アカウント全体のPnL > 個別ポジションの合計
   const getDisplayPnL = () => {
-    if (accountPnL) {
+    if(status && !status.marketStatus.isOpen){
+      const totalDaily = positions.reduce((sum, pos) => sum + (pos.dailyPnL || 0), 0)
+      const totalUnrealized = positions.reduce((sum, pos) => sum + (pos.unrealizedPnL || 0), 0)
+      const totalRealized = positions.reduce((sum, pos) => sum + (pos.realizedPnL || 0), 0)
+      return {
+        totalDaily,
+        totalUnrealized,
+        totalRealized,
+        isAccountLevel: false
+      }
+    }
+    else if (accountPnL) {
       return {
         totalDaily: accountPnL.dailyPnL,
         totalUnrealized: accountPnL.unrealizedPnL,
