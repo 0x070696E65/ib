@@ -56,6 +56,32 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
   const [sortBy, setSortBy] = useState('tradeDate')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
+  // --- Bundle grouping logic ---
+const { bundledTrades, unbundledTrades } = useMemo(() => {
+  if (!tradeDetails?.trades) return { bundledTrades: new Map(), unbundledTrades: [] }
+
+  const bundleMap = new Map<string, TradeDetail[]>()
+  const unbundled: TradeDetail[] = []
+
+  tradeDetails.trades.forEach(trade => {
+    if (trade.bundleId) {
+      if (!bundleMap.has(trade.bundleId)) {
+        bundleMap.set(trade.bundleId, [])
+      }
+      bundleMap.get(trade.bundleId)!.push(trade)
+    } else {
+      unbundled.push(trade)
+    }
+  })
+
+  return { bundledTrades: bundleMap, unbundledTrades: unbundled }
+}, [tradeDetails])
+
+// --- Calculate bundle P&L ---
+const calculateBundlePnL = (bundleTrades: TradeDetail[]) => {
+  return bundleTrades.reduce((sum, trade) => sum + trade.totalRealizedPnL, 0)
+}
+
   // 取引詳細データ取得
   const fetchTradesData = async (page = 1) => {
     setTradesLoading(true)
@@ -200,7 +226,7 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
   }
 
   // 取引詳細テーブル行コンポーネント
-  const TradeRow: React.FC<{ trade: TradeDetail; index: number }> = ({ trade }) => {
+  const TradeRow: React.FC<{ trade: TradeDetail; index?: number }> = ({ trade }) => {
     const bundleColor = trade.bundleId ? getBundleColor(trade.bundleId) : undefined
 
     return (
@@ -471,10 +497,74 @@ const BasicAnalysisTab: React.FC<BasicAnalysisTabProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {tradeDetails.trades.map((trade, index) => (
-                    <TradeRow key={trade._id} trade={trade} index={index} />
-                  ))}
-                </tbody>
+                {/* Bundled Trades */}
+                {Array.from(bundledTrades.entries()).map(([bundleId, bundleTrades]) => {
+                  const bundleColor = getBundleColor(bundleId)
+                  const bundlePnL = calculateBundlePnL(bundleTrades)
+                  
+                  return (
+                    <React.Fragment key={bundleId}>
+                      {/* Bundle Header */}
+                      <tr>
+                        <td colSpan={9} className="py-3 px-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <div 
+                                className="w-4 h-4 rounded-full"
+                                style={{ backgroundColor: bundleColor }}
+                              ></div>
+                              <span className="text-purple-300 font-medium text-sm">
+                                Bundle: {bundleTrades.length} trades
+                              </span>
+                              <span className="text-xs text-gray-400 font-mono">
+                                {bundleId.substring(0, 12)}...
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                              <span className="text-gray-300 text-sm">Total P&L:</span>
+                              <span className="font-mono text-sm font-semibold">
+                                {bundlePnL >= 0 
+                                  ? <span className="text-green-400">+${bundlePnL.toFixed(2)}</span> 
+                                  : <span className="text-red-400">${bundlePnL.toFixed(2)}</span>}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      {/* Bundle Trades */}
+                      {bundleTrades.map((trade: TradeDetail) => (
+                        <TradeRow 
+                          key={trade._id} 
+                          trade={trade} 
+                        />
+                      ))}
+                      {/* Separator */}
+                      <tr>
+                        <td colSpan={9} className="py-2">
+                          <div 
+                            className="h-px"
+                            style={{ 
+                              background: `linear-gradient(90deg, transparent 0%, ${bundleColor}30 50%, transparent 100%)`
+                            }}
+                          ></div>
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  )
+                })}
+
+                {/* Unbundled Trades */}
+                {unbundledTrades.length > 0 && bundledTrades.size > 0 && (
+                  <tr>
+                    <td colSpan={9} className="py-3 px-4">
+                      <div className="text-gray-400 text-sm font-medium">Individual Trades</div>
+                    </td>
+                  </tr>
+                )}
+                {unbundledTrades.map((trade) => (
+                  <TradeRow key={trade._id} trade={trade} />
+                ))}
+              </tbody>
               </table>
             </div>
 
