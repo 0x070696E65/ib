@@ -32,14 +32,6 @@ export class AggregatedTradeService {
 
       for (const group of groupedByOrder) {
         try {
-          // 既存データをチェック
-          const existing = await TradeOrder.findOne({ orderID: group.orderID })
-
-          if (existing) {
-            skipped++
-            continue
-          }
-
           // 集約データを作成
           const aggregatedOrder = this.aggregateExecutions(group.executions)
 
@@ -49,8 +41,8 @@ export class AggregatedTradeService {
           }
 
           // MongoDB に保存
-          const tradeOrder = new TradeOrder(aggregatedOrder)
-          await tradeOrder.save()
+          await this.updateExpiredOrders(aggregatedOrder) // 期限切れ発注の更新
+          await TradeOrder.findOneAndUpdate({ orderID: group.orderID }, aggregatedOrder, { new: true, upsert: true })
           imported++
         } catch (error) {
           console.error(`orderID ${group.orderID} の保存エラー:`, error)
@@ -160,6 +152,24 @@ export class AggregatedTradeService {
       })),
 
       dataSource: 'FLEX_QUERY',
+    }
+  }
+
+  private async updateExpiredOrders(order: any): Promise<void> {
+    console.log('期限切れ発注の状態を更新中...')
+    const oppositeOrder = await TradeOrder.findOne({
+      symbol: order.symbol,
+      expiry: order.expiry,
+      strike: order.strike,
+      putCall: order.putCall,
+      buySell: order.buySell === 'BUY' ? 'SELL' : 'BUY',
+      positionStatus: 'EXPIRED',
+    }).sort({ tradeDate: 1 })
+
+    if (oppositeOrder) {
+      order.bundleId = oppositeOrder.bundleId
+      order.tag = oppositeOrder.tag // タグを引き継ぐ
+      await TradeOrder.findOneAndUpdate({ orderID: order.orderID }, order, { new: true, upsert: true })
     }
   }
 

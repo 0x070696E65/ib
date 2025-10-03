@@ -1,7 +1,7 @@
 // frontend/src/components/DataSyncButton.tsx
 import React, { useState, useEffect } from 'react'
 import { importFlexData } from '../api/tradeService'
-import { fetchAllVixData, fetchAllVixFutureData } from '../api/vixService'
+import { /* fetchAllVixData, fetchAllVixFutureData, */ updateVixExpirations } from '../api/vixService'
 import { createPortal } from 'react-dom'
 
 interface FetchProgress {
@@ -42,7 +42,23 @@ const DataSyncButton: React.FC = () => {
     vixFutures: { lastSync: null, status: 'idle' }
   })
 
+  const [isUpdatingExpirations, setIsUpdatingExpirations] = useState(false)
+  const [expirationsUpdated, setExpirationsUpdated] = useState(false)
   const [isOverlayVisible, setIsOverlayVisible] = useState(false)
+
+  // Expirations 更新処理
+  const handleUpdateExpirations = async () => {
+    try {
+      setIsUpdatingExpirations(true)
+      await updateVixExpirations()
+      setExpirationsUpdated(true) // 成功したら同期ボタン解放
+    } catch (err) {
+      console.error("Failed to update expirations:", err)
+      alert("Update failed, please retry")
+    } finally {
+      setIsUpdatingExpirations(false)
+    }
+  }
 
   // localStorage からの状態復元
   useEffect(() => {
@@ -62,8 +78,6 @@ const DataSyncButton: React.FC = () => {
       }
     }
   }, [])
-
-
 
   // 今日すでに実行済みかチェック
   const isAlreadySyncedToday = () => {
@@ -113,7 +127,7 @@ const DataSyncButton: React.FC = () => {
   }
 }
 
-  const syncVixOptions = async (): Promise<void> => {
+  /* const syncVixOptions = async (): Promise<void> => {
   try {
     const result = await fetchAllVixData()
     updateSyncState('vixOptions', {
@@ -132,24 +146,24 @@ const DataSyncButton: React.FC = () => {
   }
 }
 
-const syncVixFutures = async (): Promise<void> => {
-  try {
-    const result = await fetchAllVixFutureData()
-    updateSyncState('vixFutures', {
-      lastSync: new Date().toISOString(),
-      status: 'success',
-      result,
-      error: undefined
-    })
-  } catch (error) {
-    updateSyncState('vixFutures', {
-      lastSync: new Date().toISOString(),
-      status: 'error',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    })
-    throw error
-  }
-}
+  const syncVixFutures = async (): Promise<void> => {
+    try {
+      const result = await fetchAllVixFutureData()
+      updateSyncState('vixFutures', {
+        lastSync: new Date().toISOString(),
+        status: 'success',
+        result,
+        error: undefined
+      })
+    } catch (error) {
+      updateSyncState('vixFutures', {
+        lastSync: new Date().toISOString(),
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+      throw error
+    }
+  } */
 
   // 全データ同期実行（順次実行に変更）
   const handleSyncAll = async () => {
@@ -158,53 +172,24 @@ const syncVixFutures = async (): Promise<void> => {
       return // 早期リターンで実行を停止
     }
 
-    setIsOverlayVisible(true)
+      // FlexDataの開始
+    updateSyncState('flexData', { status: 'loading' })
+    const flexPromise = syncFlexData().catch(() => {})
     
-  // FlexDataの開始
-  updateSyncState('flexData', { status: 'loading' })
-  const flexPromise = syncFlexData().catch(() => {})
-  
-  // VIXOptionsの開始
-  updateSyncState('vixOptions', { status: 'loading' })
-  await syncVixOptions().catch(() => {})
-  
-  // VIXFuturesの開始
-  updateSyncState('vixFutures', { status: 'loading' })
-  await syncVixFutures().catch(() => {})
+/*     // VIXOptionsの開始
+    updateSyncState('vixOptions', { status: 'loading' })
+    await syncVixOptions().catch(() => {})
     
+    // VIXFuturesの開始
+    updateSyncState('vixFutures', { status: 'loading' })
+    await syncVixFutures().catch(() => {}) */
+      
     // FlexDataの完了を待つ
     await flexPromise
   }
 
-  // 失敗したもののみリトライ（順次実行に変更）
-  const handleRetryFailed = async () => {
+  const openSyncModal = () => {
     setIsOverlayVisible(true)
-    
-    // FlexDataのリトライ（並列OK）
-    let flexPromise = Promise.resolve()
-    if (syncState.flexData.status === 'error') {
-      const newState = { ...syncState, flexData: { ...syncState.flexData, status: 'loading' as const } }
-      setSyncState(newState)
-      flexPromise = syncFlexData().catch(() => {})
-    }
-    
-    // VIXデータのリトライ（順次実行）
-    if (syncState.vixOptions.status === 'error') {
-      const newState = { ...syncState, vixOptions: { ...syncState.vixOptions, status: 'loading' as const } }
-      setSyncState(newState)
-      await syncVixOptions().catch(() => {})
-    }
-    
-    if (syncState.vixFutures.status === 'error') {
-      const newState = { ...syncState, vixFutures: { ...syncState.vixFutures, status: 'loading' as const } }
-      setSyncState(newState)
-      await syncVixFutures().catch(() => {})
-    }
-
-    // FlexDataの完了を待つ
-    await flexPromise
-    
-    setIsOverlayVisible(false)
   }
 
   const closeModal = () => {
@@ -247,18 +232,15 @@ const syncVixFutures = async (): Promise<void> => {
     return null
   }
 
-  const hasErrors = Object.values(syncState).some(sync => sync.status === 'error')
-  const allSuccessful = Object.values(syncState).every(sync => sync.status === 'success')
-
   return (
     <>
       {/* メインボタン */}
       <div className="flex items-center space-x-3">
         <button
             onClick={() => {
-              handleSyncAll()
+              openSyncModal()
             }}
-            disabled={isAlreadySyncedToday() || isAnyLoading()}
+            //disabled={isAlreadySyncedToday() || isAnyLoading()}
             className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2 ${
               isAlreadySyncedToday()
                 ? 'bg-green-600/20 text-green-400 cursor-not-allowed'
@@ -349,30 +331,37 @@ const syncVixFutures = async (): Promise<void> => {
 
             {/* アクションボタン */}
             <div className="flex justify-end space-x-3 mt-6">
-              {hasErrors && (
+              {!expirationsUpdated && (
                 <button
-                  onClick={handleRetryFailed}
-                  disabled={isAnyLoading()}
-                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all duration-200"
+                  onClick={handleUpdateExpirations}
+                  disabled={isUpdatingExpirations}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all duration-200"
                 >
-                  Retry Failed
+                  {isUpdatingExpirations ? "Updating..." : "Update Expirations"}
                 </button>
               )}
-              
+
               <button
-                onClick={closeModal}
+                onClick={handleSyncAll}
                 disabled={isAnyLoading()}
                 className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                   isAnyLoading()
-                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : allSuccessful
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-gray-700 hover:bg-gray-600 text-white'
+                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
                 }`}
               >
-                {isAnyLoading() ? 'Syncing...' : allSuccessful ? 'Complete' : 'Close'}
+                {isAnyLoading() ? "Syncing..." : "Sync Daily Data"}
+              </button>
+
+              <button
+                onClick={closeModal}
+                disabled={isAnyLoading()}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200"
+              >
+                Close
               </button>
             </div>
+
           </div>
         </div>,
         document.body

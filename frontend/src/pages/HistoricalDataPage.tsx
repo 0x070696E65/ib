@@ -19,7 +19,7 @@ export default function HistoricalDataPage() {
   
   const [page, setPage] = useState(1)
   const limit = 20
-
+  
   // オプション満期日一覧を取得
   useEffect(() => {
     const fetchContracts = async () => {

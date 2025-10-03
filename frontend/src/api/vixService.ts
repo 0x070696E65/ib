@@ -3,6 +3,14 @@ import type { OptionClosePrice, FetchSummary } from '../../../shared/types'
 
 const BASE_URL = 'http://macbook-pro.local:3001/api'
 
+export async function updateVixExpirations(): Promise<void> {
+  const res = await fetch(`${BASE_URL}/vix-expirations/update`)
+  console.log(res)
+  if (!res.ok) {
+    throw new Error('VIX満期日更新失敗')
+  }
+}
+
 export async function fetchVixExpirations(): Promise<string[]> {
   const res = await fetch(`${BASE_URL}/vix-expirations/options`)
   const data = await res.json()

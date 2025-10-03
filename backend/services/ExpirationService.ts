@@ -1,11 +1,6 @@
 // services/ExpirationService.ts
 import { createIbServices } from '.'
-import {
-  VixExpirationModel,
-  ExpirationCacheStateModel,
-  VixFutureExpirationModel,
-  FutureExpirationCacheStateModel,
-} from '../models/VixExpiration'
+import { VixExpirationModel, VixFutureExpirationModel } from '../models/VixExpiration'
 
 export class ExpirationService {
   private static instance: ExpirationService
@@ -18,209 +13,134 @@ export class ExpirationService {
     return this.instance
   }
 
-  /**
-   * 満期日を取得（キャッシュ優先）
-   * 28日以内のデータがあればMongoDB、なければIBから取得
-   */
-  async getExpirations(): Promise<string[]> {
+  async getOptionExpirations(): Promise<string[]> {
     try {
-      const cache = await ExpirationCacheStateModel.findOne()
-      const now = new Date()
-
-      // 28日以内ならキャッシュ利用
-      if (cache && this.isWithinCacheWindow(cache.lastUpdated, now)) {
-        console.log('満期日をキャッシュから取得')
-        const expirations = await VixExpirationModel.find().sort({ expiration: 1 })
-        return expirations.map((e) => e.expiration)
-      }
-
-      console.log('満期日をIBから新規取得')
-      // IBから取得
-      const expirations = await this.ibServices.contracts.getAvailableExpirations()
-
-      if (expirations.length === 0) {
-        // フォールバック: 既存のキャッシュがあれば使用
-        if (cache) {
-          console.log('IB取得失敗、既存キャッシュを使用')
-          const existingExpirations = await VixExpirationModel.find().sort({ expiration: 1 })
-          return existingExpirations.map((e) => e.expiration)
-        }
-        throw new Error('満期日を取得できませんでした')
-      }
-
-      // MongoDB更新
-      await this.updateExpirationsInDB(expirations)
-
-      // キャッシュ状態更新
-      await this.updateCacheState(cache, now)
-
-      return expirations
+      const expirations = await VixExpirationModel.find({ isEnded: false }).sort({ expiration: 1 })
+      return expirations.map((e) => e.expiration)
     } catch (error) {
       console.error('満期日取得エラー:', error)
-
-      // エラー時のフォールバック
-      const existingExpirations = await VixExpirationModel.find().sort({ expiration: 1 })
-      if (existingExpirations.length > 0) {
-        console.log('エラー発生、既存の満期日を使用:', existingExpirations.length, '件')
-        return existingExpirations.map((e) => e.expiration)
-      }
-
       throw error
     }
   }
 
   async getFutureExpirations(): Promise<string[]> {
     try {
-      const cache = await FutureExpirationCacheStateModel.findOne()
-      const now = new Date()
-
-      // 28日以内ならキャッシュ利用
-      if (cache && this.isWithinCacheWindow(cache.lastUpdated, now)) {
-        console.log('先物満期日をキャッシュから取得')
-        const expirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
-        return expirations.map((e) => e.expiration)
-      }
-
-      console.log('先物満期日をIBから新規取得')
-      // IBから取得
-      const expirations = await this.ibServices.contracts.getAvailableFutureExpirations()
-
-      if (expirations.length === 0) {
-        // フォールバック
-        if (cache) {
-          console.log('IB取得失敗、既存の先物キャッシュを使用')
-          const existingExpirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
-          return existingExpirations.map((e) => e.expiration)
-        }
-        throw new Error('先物満期日を取得できませんでした')
-      }
-
-      // MongoDB更新
-      await this.updateFutureExpirationsInDB(expirations)
-
-      // キャッシュ状態更新
-      await this.updateFutureCacheState(cache, now)
-
-      return expirations
+      const expirations = await VixFutureExpirationModel.find({ isEnded: false })
+      return expirations.map((e) => e.expiration)
     } catch (error) {
-      console.error('先物満期日取得エラー:', error)
-
-      // エラー時のフォールバック
-      const existingExpirations = await VixFutureExpirationModel.find().sort({ expiration: 1 })
-      if (existingExpirations.length > 0) {
-        console.log('エラー発生、既存の先物満期日を使用:', existingExpirations.length, '件')
-        return existingExpirations.map((e) => e.expiration)
-      }
-
+      console.error('満期日取得エラー:', error)
       throw error
+    }
+  }
+
+  async updateExpirations() {
+    try {
+      const futureExpirations = await this.ibServices.contracts.getAvailableFutureExpirations()
+      const optionExpirations = this.minusOneDayVixExpirations(futureExpirations)
+      console.log(`満期日取得完了: ${optionExpirations.length}件, 先物: ${futureExpirations.length}件`)
+      await this.updateOptionExpirationsInDB(optionExpirations)
+      await this.updateFutureExpirationsInDB(futureExpirations)
+    } catch (error) {
+      console.error('満期日更新エラー:', error)
+      throw error
+    }
+  }
+
+  minusOneDayVixExpirations(expirations: string[]): string[] {
+    return expirations.map((expiry) => {
+      const year = parseInt(expiry.slice(0, 4), 10)
+      const month = parseInt(expiry.slice(4, 6), 10) - 1
+      const day = parseInt(expiry.slice(6, 8), 10)
+
+      const date = new Date(year, month, day)
+      // 先物の満期日の翌日にする
+      date.setDate(date.getDate() - 1)
+
+      const yyyy = date.getFullYear()
+      const mm = String(date.getMonth() + 1).padStart(2, '0')
+      const dd = String(date.getDate()).padStart(2, '0')
+
+      return `${yyyy}${mm}${dd}`
+    })
+  }
+
+  private async updateOptionExpirationsInDB(expirations: string[]): Promise<void> {
+    console.log(`満期日をDBに保存: ${expirations.length}件`)
+
+    // DBに既存の満期日を取得
+    const existingDocs = await VixExpirationModel.find({}, { expiration: 1 })
+    const existingExpirations = new Set(existingDocs.map((d) => d.expiration))
+
+    // 今回IBから取得した満期日
+    const currentExpirations = new Set(expirations)
+    const operations: any[] = []
+
+    // 取得できたものは isEnded = false で upsert
+    for (const exp of expirations) {
+      operations.push({
+        updateOne: {
+          filter: { expiration: exp },
+          update: { $set: { expiration: exp, isEnded: false } },
+          upsert: true,
+        },
+      })
+    }
+
+    // DBにはあるが今回返ってこなかったもの → isEnded = true
+    for (const exp of existingExpirations) {
+      if (!currentExpirations.has(exp)) {
+        operations.push({
+          updateOne: {
+            filter: { expiration: exp },
+            update: { $set: { isEnded: true } },
+            upsert: false,
+          },
+        })
+      }
+    }
+
+    if (operations.length > 0) {
+      await VixExpirationModel.collection.bulkWrite(operations, { ordered: false })
     }
   }
 
   private async updateFutureExpirationsInDB(expirations: string[]): Promise<void> {
     console.log(`先物満期日をDBに保存: ${expirations.length}件`)
 
-    const operations = expirations.map((exp) => ({
-      updateOne: {
-        filter: { expiration: exp },
-        update: { $set: { expiration: exp } },
-        upsert: true,
-      },
-    }))
+    // DBに既存の満期日を取得
+    const existingDocs = await VixFutureExpirationModel.find({}, { expiration: 1 })
+    const existingExpirations = new Set(existingDocs.map((d) => d.expiration))
 
-    if (operations.length > 0) {
-      await VixFutureExpirationModel.bulkWrite(operations, { ordered: false })
+    // 今回IBから取得した満期日
+    const currentExpirations = new Set(expirations)
+    const operations: any[] = []
+
+    // 取得できたものは isEnded = false で upsert
+    for (const exp of expirations) {
+      operations.push({
+        updateOne: {
+          filter: { expiration: exp },
+          update: { $set: { expiration: exp, isEnded: false } },
+          upsert: true,
+        },
+      })
     }
-  }
 
-  private async updateFutureCacheState(cache: any, now: Date): Promise<void> {
-    if (cache) {
-      cache.lastUpdated = now
-      await cache.save()
-    } else {
-      await FutureExpirationCacheStateModel.create({ lastUpdated: now })
-    }
-    console.log('先物キャッシュ状態を更新')
-  }
-
-  /**
-   * キャッシュ期間内かチェック（28日）
-   */
-  private isWithinCacheWindow(lastUpdated: Date, now: Date): boolean {
-    const cacheWindowMs = 28 * 24 * 60 * 60 * 1000 // 28日
-    return now.getTime() - lastUpdated.getTime() < cacheWindowMs
-  }
-
-  /**
-   * 満期日をMongoDBに保存（重複は無視）
-   */
-  private async updateExpirationsInDB(expirations: string[]): Promise<void> {
-    console.log(`満期日をDBに保存: ${expirations.length}件`)
-
-    const operations = expirations.map((exp) => ({
-      updateOne: {
-        filter: { expiration: exp },
-        update: { $set: { expiration: exp } },
-        upsert: true,
-      },
-    }))
-
-    if (operations.length > 0) {
-      await VixExpirationModel.bulkWrite(operations, { ordered: false })
-    }
-  }
-
-  /**
-   * キャッシュ状態を更新
-   */
-  private async updateCacheState(cache: any, now: Date): Promise<void> {
-    if (cache) {
-      cache.lastUpdated = now
-      await cache.save()
-    } else {
-      await ExpirationCacheStateModel.create({ lastUpdated: now })
-    }
-    console.log('キャッシュ状態を更新')
-  }
-
-  /**
-   * キャッシュを強制更新
-   */
-  async forceRefresh(): Promise<string[]> {
-    console.log('満期日キャッシュを強制更新')
-
-    // キャッシュ状態をリセット
-    await ExpirationCacheStateModel.deleteMany({})
-
-    return await this.getExpirations()
-  }
-
-  /**
-   * キャッシュ状態を取得
-   */
-  async getCacheStatus(): Promise<{
-    hasCacheState: boolean
-    lastUpdated?: Date
-    daysSinceUpdate?: number
-    totalExpirations: number
-  }> {
-    const cache = await ExpirationCacheStateModel.findOne()
-    const totalExpirations = await VixExpirationModel.countDocuments()
-
-    if (!cache) {
-      return {
-        hasCacheState: false,
-        totalExpirations,
+    // DBにはあるが今回返ってこなかったもの → isEnded = true
+    for (const exp of existingExpirations) {
+      if (!currentExpirations.has(exp)) {
+        operations.push({
+          updateOne: {
+            filter: { expiration: exp },
+            update: { $set: { isEnded: true } },
+            upsert: false,
+          },
+        })
       }
     }
 
-    const now = new Date()
-    const daysSinceUpdate = Math.floor((now.getTime() - cache.lastUpdated.getTime()) / (1000 * 60 * 60 * 24))
-
-    return {
-      hasCacheState: true,
-      lastUpdated: cache.lastUpdated,
-      daysSinceUpdate,
-      totalExpirations,
+    if (operations.length > 0) {
+      await VixFutureExpirationModel.collection.bulkWrite(operations, { ordered: false })
     }
   }
 }

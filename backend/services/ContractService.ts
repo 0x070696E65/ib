@@ -21,47 +21,6 @@ export class ContractService {
     }
   }
 
-  public async getAvailableExpirations(): Promise<string[]> {
-    await this.ibService.connect()
-
-    return new Promise<string[]>((resolve, reject) => {
-      const reqId = this.ibService.getNextRequestId()
-      const expirations = new Set<string>()
-
-      this.ibService.addPendingRequest(reqId, {
-        expirations,
-        resolve: (result: string[]) => resolve(result),
-        reject,
-        resolved: false,
-        timestamp: Date.now(),
-      })
-
-      const timeoutId = setTimeout(() => {
-        const request = this.ibService.getPendingRequest(reqId)
-        if (request && !request.resolved) {
-          request.resolved = true
-          let uniqueExpirations = Array.from(expirations)
-            .map((expiry) => expiry.split(' ')[0])
-            .sort()
-          uniqueExpirations = this.filterSecondTuesday(uniqueExpirations)
-          console.log(`満期日取得完了 (タイムアウト): ${uniqueExpirations.length}件`)
-          resolve(uniqueExpirations)
-          this.ibService.removePendingRequest(reqId)
-        }
-      }, 10000)
-
-      const vixContract: Contract = {
-        symbol: 'VIX',
-        secType: SecType.OPT,
-        exchange: 'SMART',
-        currency: 'USD',
-      }
-
-      console.log(`満期日取得リクエスト送信 (ReqID: ${reqId})`)
-      this.ibService.getIbApi().reqContractDetails(reqId, vixContract)
-    })
-  }
-
   // 先物用（新規）
   async getAvailableFutureExpirations(): Promise<string[]> {
     await this.ibService.connect()
@@ -72,7 +31,10 @@ export class ContractService {
 
       this.ibService.addPendingRequest(reqId, {
         expirations,
-        resolve: (result: string[]) => resolve(result),
+        resolve: (result: string[]) => {
+          clearTimeout(timeoutId)
+          resolve(result)
+        },
         reject,
         resolved: false,
         timestamp: Date.now(),
@@ -83,13 +45,13 @@ export class ContractService {
         if (request && !request.resolved) {
           request.resolved = true
           let uniqueExpirations = Array.from(expirations)
-            .map((expiry) => expiry.split(' ')[0])
+            .map((expiry) => expiry.split(' ')[0]) // lastTradeDateOrContractMonth のみ抽出
             .sort()
           console.log(`先物満期日取得完了 (タイムアウト): ${uniqueExpirations.length}件`)
           resolve(uniqueExpirations)
           this.ibService.removePendingRequest(reqId)
         }
-      }, 10000)
+      }, 20000) // タイムアウトを20秒に延長
 
       const vixFutureContract: Contract = {
         symbol: 'VIX',
@@ -97,6 +59,7 @@ export class ContractService {
         exchange: 'CFE',
         currency: 'USD',
         tradingClass: 'VX',
+        // lastTradeDateOrContractMonth は受信側で取得される想定
       }
 
       console.log(`先物満期日取得リクエスト送信 (ReqID: ${reqId})`)

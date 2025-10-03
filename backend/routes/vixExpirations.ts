@@ -7,7 +7,7 @@ const router = Router()
 router.get('/options', async (req, res) => {
   try {
     const expirationService = ExpirationService.getInstance()
-    const data = await expirationService.getExpirations()
+    const data = await expirationService.getOptionExpirations()
     res.json({ data })
   } catch (err) {
     console.error(err)
@@ -20,6 +20,17 @@ router.get('/futures', async (req, res) => {
     const expirationService = ExpirationService.getInstance()
     const data = await expirationService.getFutureExpirations()
     res.json({ data })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+router.get('/update', async (req, res) => {
+  try {
+    const expirationService = ExpirationService.getInstance()
+    await expirationService.updateExpirations()
+    res.json({ message: '満期日が更新されました' })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: String(err) })

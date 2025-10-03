@@ -136,7 +136,7 @@ export class VixDataService {
     try {
       // 1. 満期日取得
       console.log('満期日を取得中...')
-      const expirations = await this.getAndSaveExpirations()
+      const expirations = await this.expirationService.getOptionExpirations()
 
       if (!expirations || expirations.length === 0) {
         throw new Error('満期日が取得できませんでした。IBが正常に動作していることを確認してください。')
@@ -249,13 +249,13 @@ export class VixDataService {
     try {
       // 1. 先物満期日取得
       console.log('先物満期日を取得中...')
-      const contracts = await this.expirationService.getFutureExpirations()
+      const expirations = await this.expirationService.getFutureExpirations()
 
-      if (!contracts || contracts.length === 0) {
+      if (!expirations || expirations.length === 0) {
         throw new Error('先物満期日が取得できませんでした。')
       }
 
-      console.log(`取得した先物契約: ${contracts.length}件`)
+      console.log(`取得した先物契約: ${expirations.length}件`)
 
       // 2. 各契約の最適化情報を準備
       console.log('先物最適化情報を準備中...')
@@ -273,8 +273,8 @@ export class VixDataService {
       }> = []
 
       // 最適化情報を順次取得
-      for (const contract of contracts) {
-        const lastMarketDate = await this.getLastFutureMarketDate(contract)
+      for (const expiration of expirations) {
+        const lastMarketDate = await this.getLastFutureMarketDate(expiration)
         const optimization = this.calculateOptimalDuration(lastMarketDate)
 
         // 統計を更新
@@ -285,7 +285,7 @@ export class VixDataService {
 
         // リクエスト配列に追加
         requests.push({
-          contractMonth: contract,
+          contractMonth: expiration,
           durationDays: optimization.durationDays,
           fromDate: lastMarketDate || undefined,
           optimizationReason: optimization.reason,
@@ -333,7 +333,7 @@ export class VixDataService {
 
       const summary: FutureFetchSummary = {
         duration: `${(duration / 1000).toFixed(1)}秒`,
-        contracts: contracts.length,
+        contracts: expirations.length,
         totalRequests: details.length,
         successCount,
         errorCount,
@@ -546,13 +546,6 @@ export class VixDataService {
     return Array.from(dailyMap.values())
       .map(({ date, close }) => ({ date, close }))
       .sort((a, b) => a.date.getTime() - b.date.getTime())
-  }
-
-  /**
-   * 満期日取得（ExpirationServiceを使用）
-   */
-  private async getAndSaveExpirations(): Promise<string[]> {
-    return await this.expirationService.getExpirations()
   }
 
   /**
