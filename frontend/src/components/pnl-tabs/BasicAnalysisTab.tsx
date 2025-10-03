@@ -1,5 +1,5 @@
 // frontend/src/components/pnl-tabs/BasicAnalysisTab.tsx
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   LineChart,
   Line,
@@ -83,7 +83,7 @@ const calculateBundlePnL = (bundleTrades: TradeDetail[]) => {
 }
 
   // 取引詳細データ取得
-  const fetchTradesData = async (page = 1) => {
+  const fetchTradesData = useCallback(async (page = 1) => {
     setTradesLoading(true)
     setTradesError(null)
     try {
@@ -105,12 +105,12 @@ const calculateBundlePnL = (bundleTrades: TradeDetail[]) => {
     } finally {
       setTradesLoading(false)
     }
-  }
+  }, [startDate, endDate, symbol, tag, sortBy, sortOrder])
 
   // 初回データ取得とフィルタ変更時の再取得
   useEffect(() => {
     fetchTradesData(1)
-  }, [startDate, endDate, symbol, tag, sortBy, sortOrder])
+  }, [startDate, endDate, symbol, tag, sortBy, sortOrder, fetchTradesData])
 
   // ソート変更ハンドラ
   const handleSort = (field: string) => {

@@ -11,14 +11,14 @@ export async function updateVixExpirations(): Promise<void> {
   }
 }
 
-export async function fetchVixExpirations(): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/vix-expirations/options`)
+export async function fetchVixExpirations(isEnded: boolean = false): Promise<string[]> {
+  const res = await fetch(`${BASE_URL}/vix-expirations/options?isEnded=${isEnded}`)
   const data = await res.json()
   return data.data
 }
 
-export async function fetchVixFutureExpirations(): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/vix-expirations/futures`)
+export async function fetchVixFutureExpirations(isEnded: boolean = false): Promise<string[]> {
+  const res = await fetch(`${BASE_URL}/vix-expirations/futures?isEnded=${isEnded}`)
   const data = await res.json()
   return data.data
 }

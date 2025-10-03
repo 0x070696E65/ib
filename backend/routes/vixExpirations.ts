@@ -6,8 +6,9 @@ const router = Router()
 // VIX 満期日の取得＆保存
 router.get('/options', async (req, res) => {
   try {
+    const isEnded = req.query.isEnded === 'true'
     const expirationService = ExpirationService.getInstance()
-    const data = await expirationService.getOptionExpirations()
+    const data = await expirationService.getOptionExpirations(isEnded)
     res.json({ data })
   } catch (err) {
     console.error(err)
@@ -17,8 +18,9 @@ router.get('/options', async (req, res) => {
 
 router.get('/futures', async (req, res) => {
   try {
+    const isEnded = req.query.isEnded === 'true'
     const expirationService = ExpirationService.getInstance()
-    const data = await expirationService.getFutureExpirations()
+    const data = await expirationService.getFutureExpirations(isEnded)
     res.json({ data })
   } catch (err) {
     console.error(err)

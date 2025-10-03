@@ -23,7 +23,7 @@ export default function HistoricalDataPage() {
   // オプション満期日一覧を取得
   useEffect(() => {
     const fetchContracts = async () => {
-      const res = await fetchVixExpirations()
+      const res = await fetchVixExpirations(true)
       setOptionContracts(res)
     }
     fetchContracts()
@@ -32,7 +32,7 @@ export default function HistoricalDataPage() {
   // 先物満期日一覧を取得
   useEffect(() => {
     const fetchContracts = async () => {
-      const res = await fetchVixFutureExpirations()
+      const res = await fetchVixFutureExpirations(true)
       setFutureContracts(res)
     }
     fetchContracts()

@@ -13,9 +13,15 @@ export class ExpirationService {
     return this.instance
   }
 
-  async getOptionExpirations(): Promise<string[]> {
+  async getOptionExpirations(isEnded: boolean): Promise<string[]> {
     try {
-      const expirations = await VixExpirationModel.find({ isEnded: false }).sort({ expiration: 1 })
+      let expirations
+      if (isEnded) {
+        expirations = await VixExpirationModel.find().sort({ isEnded: 1, expiration: 1 })
+      } else {
+        expirations = await VixExpirationModel.find({ isEnded: false }).sort({ expiration: 1 })
+      }
+
       return expirations.map((e) => e.expiration)
     } catch (error) {
       console.error('満期日取得エラー:', error)
@@ -23,9 +29,15 @@ export class ExpirationService {
     }
   }
 
-  async getFutureExpirations(): Promise<string[]> {
+  async getFutureExpirations(isEnded: boolean): Promise<string[]> {
     try {
-      const expirations = await VixFutureExpirationModel.find({ isEnded: false })
+      let expirations
+      if (isEnded) {
+        expirations = await VixFutureExpirationModel.find().sort({ isEnded: 1, expiration: 1 })
+      } else {
+        expirations = await VixFutureExpirationModel.find({ isEnded: false }).sort({ expiration: 1 })
+      }
+
       return expirations.map((e) => e.expiration)
     } catch (error) {
       console.error('満期日取得エラー:', error)

@@ -1,7 +1,7 @@
 // frontend/src/components/DataSyncButton.tsx
 import React, { useState, useEffect } from 'react'
 import { importFlexData } from '../api/tradeService'
-import { /* fetchAllVixData, fetchAllVixFutureData, */ updateVixExpirations } from '../api/vixService'
+import { fetchAllVixData, fetchAllVixFutureData, updateVixExpirations } from '../api/vixService'
 import { createPortal } from 'react-dom'
 
 interface FetchProgress {
@@ -127,7 +127,7 @@ const DataSyncButton: React.FC = () => {
   }
 }
 
-  /* const syncVixOptions = async (): Promise<void> => {
+  const syncVixOptions = async (): Promise<void> => {
   try {
     const result = await fetchAllVixData()
     updateSyncState('vixOptions', {
@@ -163,7 +163,7 @@ const DataSyncButton: React.FC = () => {
       })
       throw error
     }
-  } */
+  }
 
   // 全データ同期実行（順次実行に変更）
   const handleSyncAll = async () => {
@@ -172,17 +172,17 @@ const DataSyncButton: React.FC = () => {
       return // 早期リターンで実行を停止
     }
 
-      // FlexDataの開始
+    // FlexDataの開始
     updateSyncState('flexData', { status: 'loading' })
     const flexPromise = syncFlexData().catch(() => {})
     
-/*     // VIXOptionsの開始
+     // VIXOptionsの開始
     updateSyncState('vixOptions', { status: 'loading' })
     await syncVixOptions().catch(() => {})
     
     // VIXFuturesの開始
     updateSyncState('vixFutures', { status: 'loading' })
-    await syncVixFutures().catch(() => {}) */
+    await syncVixFutures().catch(() => {})
       
     // FlexDataの完了を待つ
     await flexPromise
